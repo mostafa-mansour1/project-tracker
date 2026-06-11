@@ -26,12 +26,13 @@ const statusLabels: Record<TaskStatus, string> = {
 };
 ---
 
-<BaseLayout title="Task board" project={project} projects={projects}>
+<BaseLayout
+  title="Task board"
+  project={project}
+  projects={projects}
+  planCompletion={{ percent: completedPercent, closedTasks, totalTasks }}
+>
   <section class="stats" aria-label="Task statistics">
-    <article class="stat completion-stat">
-      <div><span>Plan completion</span><strong>{completedPercent}%</strong><small>{closedTasks} of {totalTasks} tasks closed</small></div>
-      <div class="stat-progress"><i style={`width: ${completedPercent}%`}></i></div>
-    </article>
     <div class="stat-facts">
       <article class="stat"><strong>{totalTasks}</strong><span>Total tasks</span></article>
       <article class="stat"><strong>{archived.length}</strong><span>Archived</span></article>
@@ -220,14 +221,8 @@ const statusLabels: Record<TaskStatus, string> = {
 </BaseLayout>
 
 <style>
-  .stats { background: var(--surface); border: 1px solid var(--line); display: grid; grid-template-columns: minmax(280px, .8fr) minmax(420px, 1.2fr); margin-bottom: 20px; }
-  .completion-stat { align-items: end; border-right: 1px solid var(--line); display: grid; gap: 18px; grid-template-columns: auto minmax(100px, 1fr); padding: 16px 18px; }
-  .completion-stat > div:first-child { display: grid; gap: 2px; }
+  .stats { background: var(--surface); border: 1px solid var(--line); margin-bottom: 20px; }
   .stat span { color: var(--muted); font-size: 9px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; }
-  .completion-stat strong { color: var(--primary); font-size: 30px; font-weight: 400; line-height: 1; }
-  .completion-stat small { color: var(--muted); font-size: 10px; }
-  .stat-progress { background: var(--line); height: 4px; margin-bottom: 5px; overflow: hidden; }
-  .stat-progress i { background: var(--primary); display: block; height: 100%; }
   .stat-facts { display: grid; grid-template-columns: repeat(4, 1fr); }
   .stat-facts .stat { align-content: center; border-right: 1px solid var(--line); display: grid; gap: 3px; justify-items: center; min-width: 0; padding: 12px 10px; }
   .stat-facts .stat:last-child { border-right: 0; }
@@ -291,8 +286,6 @@ const statusLabels: Record<TaskStatus, string> = {
   [hidden] { display: none !important; }
 
   @container (max-width: 1050px) {
-    .stats { grid-template-columns: 1fr; }
-    .completion-stat { border-bottom: 1px solid var(--line); border-right: 0; }
     .toolbar { grid-template-columns: 1fr auto; }
     .toolbar-title { align-self: stretch; }
     .toolbar label { grid-row: 2; }
@@ -302,7 +295,6 @@ const statusLabels: Record<TaskStatus, string> = {
   }
 
   @container (max-width: 760px) {
-    .completion-stat { grid-template-columns: 1fr; }
     .stat-facts { grid-template-columns: repeat(2, 1fr); }
     .stat-facts .stat:nth-child(2) { border-right: 0; }
     .stat-facts .stat:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
@@ -324,7 +316,6 @@ const statusLabels: Record<TaskStatus, string> = {
 
   @media (max-width: 800px) {
     .hero { grid-template-columns: 1fr; }
-    .stats { grid-template-columns: repeat(2, 1fr); }
     .toolbar { grid-template-columns: 1fr; }
     .toolbar p { margin: 0 4px; }
   }

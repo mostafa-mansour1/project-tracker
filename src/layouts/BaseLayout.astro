@@ -4,6 +4,11 @@ interface Props {
   project: { key: string; name: string; scope: string };
   projects: Array<{ key: string; name: string; scope: string }>;
   description?: string;
+  planCompletion?: {
+    percent: number;
+    closedTasks: number;
+    totalTasks: number;
+  };
 }
 
 const {
@@ -11,6 +16,7 @@ const {
   project,
   projects,
   description = `Visual project tracker for ${project.name}`,
+  planCompletion,
 } = Astro.props;
 const projectQuery = `?project=${encodeURIComponent(project.key)}`;
 const pathname = Astro.url.pathname;
@@ -52,6 +58,24 @@ const isDocuments = !isHistory && pathname !== '/';
             <span>03</span> History
           </a>
         </nav>
+
+        {planCompletion && (
+          <div class="rail-completion">
+            <span class="rail-label">Plan completion</span>
+            <strong>{planCompletion.percent}%</strong>
+            <div
+              class="rail-progress"
+              role="progressbar"
+              aria-label="Plan completion"
+              aria-valuenow={planCompletion.percent}
+              aria-valuemin="0"
+              aria-valuemax="100"
+            >
+              <i style={`width: ${planCompletion.percent}%`}></i>
+            </div>
+            <small>{planCompletion.closedTasks} of {planCompletion.totalTasks} tasks closed</small>
+          </div>
+        )}
 
         <div class="rail-note">
           <span class="rail-label">Source of truth</span>
@@ -122,6 +146,11 @@ const isDocuments = !isHistory && pathname !== '/';
   nav a span { color: #6e7168; font-family: ui-monospace, monospace; font-size: 10px; }
   nav a:hover, nav a.active { background: #292e27; border-left-color: var(--primary); color: white; }
   nav a.active span { color: var(--primary); }
+  .rail-completion { border-top: 1px solid #3b3f37; display: grid; gap: 7px; margin-top: 24px; padding-top: 20px; }
+  .rail-completion strong { color: #f5f0e5; font-size: 30px; font-weight: 400; line-height: 1; }
+  .rail-completion small { color: #a9ab9f; font-size: 11px; }
+  .rail-progress { background: #3b3f37; height: 4px; overflow: hidden; }
+  .rail-progress i { background: var(--primary); display: block; height: 100%; }
   .rail-note { border-top: 1px solid #3b3f37; margin-top: auto; padding-top: 18px; }
   .rail-note code { color: #f4a17d; display: block; font-size: 12px; margin-top: 8px; }
   .rail-note p { line-height: 1.5; margin-bottom: 0; }
@@ -144,6 +173,11 @@ const isDocuments = !isHistory && pathname !== '/';
     .site-rail { height: auto; min-height: 0; padding: 14px 18px; position: static; }
     .rail-project, .rail-note { display: none; }
     .site-rail nav { display: flex; margin-top: 14px; }
+    .rail-completion { grid-template-columns: auto auto minmax(100px, 1fr); margin-top: 14px; padding-top: 14px; }
+    .rail-completion .rail-label { align-self: center; }
+    .rail-completion strong { font-size: 20px; }
+    .rail-completion small { grid-column: 1 / -1; }
+    .rail-progress { align-self: center; }
     .site-header { position: static; }
     .header-inner { align-items: flex-start; flex-wrap: wrap; gap: 10px; }
     .project-picker { width: 100%; }
