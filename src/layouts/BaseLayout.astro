@@ -13,7 +13,9 @@ const {
   description = `Visual project tracker for ${project.name}`,
 } = Astro.props;
 const projectQuery = `?project=${encodeURIComponent(project.key)}`;
-const isDocuments = title !== 'Task board';
+const pathname = Astro.url.pathname;
+const isHistory = pathname.startsWith('/history');
+const isDocuments = !isHistory && pathname !== '/';
 ---
 
 <!doctype html>
@@ -40,18 +42,21 @@ const isDocuments = title !== 'Task board';
         </div>
 
         <nav aria-label="Main navigation">
-          <a class:list={[{ active: !isDocuments }]} href={`/${projectQuery}`}>
+          <a class:list={[{ active: !isDocuments && !isHistory }]} href={`/${projectQuery}`}>
             <span>01</span> Roadmap
           </a>
           <a class:list={[{ active: isDocuments }]} href={`/documents${projectQuery}`}>
             <span>02</span> Project files
           </a>
+          <a class:list={[{ active: isHistory }]} href={`/history${projectQuery}`}>
+            <span>03</span> History
+          </a>
         </nav>
 
         <div class="rail-note">
           <span class="rail-label">Source of truth</span>
-          <code>TASKS.md</code>
-          <p>Plan data is read directly from the repository.</p>
+          <code>TASKS.md + archives</code>
+          <p>Live and archived plan data is read directly from the repository.</p>
         </div>
       </aside>
 

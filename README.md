@@ -10,8 +10,11 @@ The tracker scans the **workspace root** (its own parent folder by default) and 
 
 1. Every folder beside `project-tracker/` is treated as a **scope**.
 2. Every immediate child of a scope that contains a `TASKS.md` is treated as a **project**.
-3. Each project's `TASKS.md` is parsed into phases, tasks, acceptance criteria, and live status counts.
-4. `README.md`, `TASKS.md`, and any Markdown under `docs/` and `tasks/` are exposed in a per-project document viewer.
+3. Each project's `TASKS.md` is parsed into live phases, tasks, acceptance criteria, and status counts.
+4. Files named like `TASKS.full-archive-*.md` under `docs/` or `tasks/` are parsed directly and shown with live tasks on the Roadmap.
+5. Archived tasks are deduplicated by task ID across snapshot archives, keeping the copy with the richest available details.
+6. A dedicated `SESSIONS.md` is shown newest-first on the History page. Projects that still keep a `## Session Log` inside `TASKS.md` remain supported.
+7. Project Markdown is exposed in the document viewer, except `TASKS.index.md`, which is intentionally not used or shown by the tracker.
 
 Discovery happens on every page load, so adding or editing a project is instant — just refresh the browser. There is no registration step and the tracker is never copied into a project.
 
@@ -30,8 +33,10 @@ workspace/
     app-one/
       TASKS.md            # required — makes app-one a tracked project
       README.md           # optional — its "# Heading" becomes the display name
+      SESSIONS.md         # optional — dedicated session log shown in History
       docs/               # optional — extra Markdown, shown under "Product docs"
-      tasks/              # optional — archived task history, shown under "Task history"
+        TASKS.full-archive-2026-06-01.md  # optional — archived tasks shown on Roadmap
+      tasks/              # optional — archive files and task-history Markdown
     app-two/
       TASKS.md
   personal/               # another scope
@@ -42,6 +47,8 @@ workspace/
 - A folder only becomes a project if it contains `TASKS.md`.
 - A project's display name comes from the first `# Heading` in its `README.md`, falling back to the folder name.
 - Projects are grouped by scope in the selector and sorted by scope, then name.
+- Archive files are discovered by filenames containing `TASKS` and `archive`; no task index is required.
+- `TASKS.index.md` may still exist for agent workflows, but the tracker does not read or display it.
 
 If your scope folders are **not** siblings of the tracker, point it elsewhere:
 
@@ -89,6 +96,21 @@ In-progress tasks are highlighted and auto-expanded in the board. If a status ne
 
 ---
 
+## Archive and session files
+
+The Roadmap is the complete task view. It combines:
+
+- Live work from the project's root `TASKS.md`.
+- Completed work parsed directly from `docs/TASKS*archive*.md` and `tasks/TASKS*archive*.md`.
+
+Archive files can use task tables, detailed task headings, or both. The tracker extracts task IDs, titles, `**What:**` descriptions, and checklist or bullet details where available. When several snapshot archives contain the same task ID, only one task card is shown.
+
+The History page is reserved for session entries. The preferred source is `SESSIONS.md`, with `docs/SESSIONS.md` and `tasks/SESSIONS.md` also supported. If none exists, the tracker falls back to a `## Session Log` section in `TASKS.md`.
+
+Plan completion uses live and archived task counts and displays one decimal place, so an incomplete plan cannot round from `99.6%` to `100%`.
+
+---
+
 ## Project structure
 
 ```text
@@ -97,9 +119,10 @@ project-tracker/
     layouts/
       BaseLayout.astro        # shared page shell
     lib/
-      content.ts              # discovery + TASKS.md / Markdown parsing (all core logic)
+      content.ts              # discovery + live/archive/session Markdown parsing
     pages/
-      index.astro             # task board: phases, tasks, stats, filters
+      index.astro             # combined live + archived task board
+      history.astro           # newest-first session history
       document.astro          # single Markdown document viewer
       documents/
         index.astro           # per-project document index

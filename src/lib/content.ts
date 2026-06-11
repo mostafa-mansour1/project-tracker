@@ -25,6 +25,24 @@ export interface Phase {
   tasks: Task[];
 }
 
+export interface SessionLogEntry {
+  title: string;
+  body: string;
+}
+
+export interface ArchivedTask {
+  id: string;
+  title: string;
+  archive: string;
+  description: string;
+  criteria: Criterion[];
+}
+
+export interface ArchiveGroup {
+  archive: string;
+  tasks: ArchivedTask[];
+}
+
 export interface DocumentEntry {
   slug: string;
   title: string;
@@ -137,18 +155,155 @@ export function parseTaskBoard(project: ProjectEntry): Phase[] {
   return phases.filter((entry) => entry.tasks.length > 0);
 }
 
+const sessionFileCandidates = ['SESSIONS.md', 'docs/SESSIONS.md', 'tasks/SESSIONS.md'];
+
+export function parseSessionLog(project: ProjectEntry): SessionLogEntry[] {
+  const sessionFile = sessionFileCandidates.find((relative) => fs.existsSync(path.join(project.root, relative)));
+  if (sessionFile) {
+    // Dedicated log file: every `### ` heading is an entry.
+    return collectSessionEntries(readRepoFile(project, sessionFile), () => true);
+  }
+  // Fallback: the log lives in a `## Session Log` section inside TASKS.md.
+  let inLog = false;
+  return collectSessionEntries(readRepoFile(project, 'TASKS.md'), (line) => {
+    const sectionMatch = line.match(/^## (.+)$/);
+    if (sectionMatch) inLog = sectionMatch[1].trim().toLowerCase() === 'session log';
+    return inLog;
+  });
+}
+
+function collectSessionEntries(source: string, isInScope: (line: string) => boolean): SessionLogEntry[] {
+  // Drop HTML comments so the commented-out entry template is not parsed.
+  const lines = source.replace(/<!--[\s\S]*?-->/g, '').split('\n');
+  const entries: SessionLogEntry[] = [];
+  let current: SessionLogEntry | undefined;
+
+  for (const line of lines) {
+    if (!isInScope(line)) {
+      current = undefined;
+      continue;
+    }
+
+    const entryMatch = line.match(/^### (.+)$/);
+    if (entryMatch) {
+      current = { title: entryMatch[1].trim(), body: '' };
+      entries.push(current);
+      continue;
+    }
+
+    if (current) current.body += `${line}\n`;
+  }
+
+  return entries.map((entry) => ({ ...entry, body: entry.body.trim() }));
+}
+
+const taskIdPattern = /^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-\d+[a-z]?$/;
+
+export function parseTaskArchives(project: ProjectEntry): ArchivedTask[] {
+  const archiveFiles = ['docs', 'tasks']
+    .flatMap((directory) => listMarkdown(project, directory))
+    .filter((file) => /^TASKS.*archive.*\.md$/i.test(path.basename(file)))
+    .sort();
+  const tasks = new Map<string, ArchivedTask>();
+
+  for (const archive of archiveFiles) {
+    for (const task of parseArchiveFile(readRepoFile(project, archive), archive)) {
+      const existing = tasks.get(task.id);
+      if (!existing || archiveTaskDetailScore(task) >= archiveTaskDetailScore(existing)) {
+        tasks.set(task.id, task);
+      }
+    }
+  }
+
+  return [...tasks.values()];
+}
+
+function parseArchiveFile(source: string, archive: string): ArchivedTask[] {
+  const lines = source.split('\n');
+  const tasks = new Map<string, ArchivedTask>();
+
+  for (const line of lines) {
+    if (line.trimStart().startsWith('|')) {
+      const cells = line.split('|').slice(1, -1).map((cell) => cell.trim());
+      const [id, title] = cells;
+      if (id && title && taskIdPattern.test(id)) {
+        tasks.set(id, { id, title: stripTicks(title), archive, description: '', criteria: [] });
+      }
+    }
+
+    const headingMatch = line.match(/^#{2,5}\s+([A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-\d+[a-z]?)\s+—\s+(?:\[[ x~-]\]\s+)?(.+)$/);
+    if (headingMatch && taskIdPattern.test(headingMatch[1])) {
+      const [, id, title] = headingMatch;
+      tasks.set(id, { id, title: stripTicks(title.replace(/\s+\*\(.+\)\*$/, '')), archive, description: '', criteria: [] });
+    }
+  }
+
+  for (const task of tasks.values()) {
+    const section = findTaskDetailSection(lines, task.id);
+    if (!section) continue;
+
+    for (const line of section) {
+      const descriptionMatch = line.match(/^\*\*What:\*\*\s*(.+)$/);
+      if (descriptionMatch) task.description = stripTicks(descriptionMatch[1]);
+
+      const criterionMatch = line.match(/^- \[([ x~-])\]\s+(.+)$/) ?? line.match(/^-\s+(.+)$/);
+      if (criterionMatch) {
+        const hasStatus = criterionMatch.length === 3;
+        task.criteria.push({
+          status: hasStatus ? statusMap[criterionMatch[1]] : 'done',
+          text: stripTicks(criterionMatch[hasStatus ? 2 : 1]),
+        });
+      }
+    }
+  }
+
+  return [...tasks.values()];
+}
+
+function findTaskDetailSection(lines: string[], taskId: string): string[] | undefined {
+  const escapedId = taskId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const headingPattern = new RegExp(`^(#{2,5})\\s+${escapedId}(?:\\s|$)`);
+  const start = lines.findIndex((line) => headingPattern.test(line));
+  if (start < 0) return undefined;
+
+  const level = lines[start].match(/^#+/)?.[0].length ?? 5;
+  let end = lines.length;
+  for (let index = start + 1; index < lines.length; index += 1) {
+    const nextHeading = lines[index].match(/^(#+)\s+/);
+    if (nextHeading && nextHeading[1].length <= level) {
+      end = index;
+      break;
+    }
+  }
+  return lines.slice(start + 1, end);
+}
+
+function archiveTaskDetailScore(task: ArchivedTask): number {
+  return task.criteria.length * 10 + (task.description ? 5 : 0);
+}
+
+export function groupArchivedTasks(tasks: ArchivedTask[]): ArchiveGroup[] {
+  const groups = new Map<string, ArchivedTask[]>();
+  for (const task of tasks) {
+    const key = task.archive || 'Unsorted';
+    (groups.get(key) ?? groups.set(key, []).get(key)!).push(task);
+  }
+  return [...groups.entries()].map(([archive, grouped]) => ({ archive, tasks: grouped }));
+}
+
 export function getDocuments(project: ProjectEntry): DocumentEntry[] {
   const entries = [
     { file: 'README.md', group: 'Overview' },
     { file: 'TASKS.md', group: 'Planning' },
-    ...listMarkdown(project, 'docs').map((file) => ({ file, group: 'Product docs' })),
-    ...listMarkdown(project, 'tasks').map((file) => ({ file, group: 'Task history' })),
+    { file: 'SESSIONS.md', group: 'Planning' },
+    ...listMarkdown(project, 'docs').filter(notTaskIndex).map((file) => ({ file, group: 'Product docs' })),
+    ...listMarkdown(project, 'tasks').filter(notTaskIndex).map((file) => ({ file, group: 'Task history' })),
   ].filter(({ file }) => fs.existsSync(path.join(project.root, file)));
 
   return entries.map(({ file, group }) => {
     const source = readRepoFile(project, file);
     return {
-      slug: file.replace(/\.md$/, '').replaceAll('/', '--').toLowerCase(),
+      slug: toDocumentSlug(file),
       title: source.match(/^# (.+)$/m)?.[1] ?? path.basename(file, '.md'),
       group,
       path: file,
@@ -157,8 +312,12 @@ export function getDocuments(project: ProjectEntry): DocumentEntry[] {
   });
 }
 
-export function renderMarkdown(source: string): string {
-  return marked.parse(source, { async: false }) as string;
+export function renderMarkdown(source: string, options: { breaks?: boolean } = {}): string {
+  return marked.parse(source, { async: false, breaks: options.breaks ?? false }) as string;
+}
+
+export function toDocumentSlug(filePath: string): string {
+  return filePath.replace(/\.md$/, '').replaceAll('/', '--').toLowerCase();
 }
 
 function listMarkdown(project: ProjectEntry, directory: string): string[] {
@@ -184,4 +343,8 @@ function readProjectName(projectRoot: string): string {
 
 function stripTicks(value: string): string {
   return value.replaceAll('`', '');
+}
+
+function notTaskIndex(file: string): boolean {
+  return path.basename(file).toLowerCase() !== 'tasks.index.md';
 }

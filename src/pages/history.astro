@@ -1,0 +1,66 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import {
+  getProject,
+  getProjects,
+  parseSessionLog,
+  renderMarkdown,
+} from '../lib/content';
+
+export const prerender = false;
+
+const projects = getProjects();
+const project = getProject(Astro.url.searchParams.get('project'));
+const sessionLog = parseSessionLog(project).reverse();
+---
+
+<BaseLayout title="History" project={project} projects={projects}>
+  <section class="history-head">
+    <span class="eyebrow">Plan history</span>
+    <h1>Session log</h1>
+    <p class="muted">A chronological log of every working session. Active and archived tasks are shown together on the Roadmap.</p>
+    <div class="history-stats">
+      <span><strong>{sessionLog.length}</strong> sessions</span>
+    </div>
+  </section>
+
+  {sessionLog.length > 0 && (
+    <section class="block">
+      <header class="block-head">
+        <strong>Session log</strong>
+        <span class="muted">{sessionLog.length} {sessionLog.length === 1 ? 'entry' : 'entries'} · newest first</span>
+      </header>
+      <div class="session-list">
+        {sessionLog.map((entry) => (
+          <article class="session-entry panel">
+            <h3>{entry.title}</h3>
+            <div class="markdown" set:html={renderMarkdown(entry.body, { breaks: true })}></div>
+          </article>
+        ))}
+      </div>
+    </section>
+  )}
+</BaseLayout>
+
+<style>
+  .history-head { border-bottom: 1px solid var(--line); margin-bottom: 24px; padding-bottom: 20px; }
+  .history-head h1 { font-size: clamp(28px, 4vw, 42px); margin: 6px 0 8px; }
+  .history-stats { display: flex; flex-wrap: wrap; gap: 22px; margin-top: 14px; }
+  .history-stats span { color: var(--muted); font-size: 13px; }
+  .history-stats strong { color: var(--ink); font-size: 18px; font-weight: 550; margin-right: 4px; }
+
+  .block { margin-bottom: 34px; }
+  .block-head { align-items: baseline; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; margin-bottom: 16px; padding-bottom: 10px; }
+  .block-head strong { font-size: 18px; font-weight: 550; }
+
+  .session-list { display: grid; gap: 14px; }
+  .session-entry { padding: 18px 20px; }
+  .session-entry h3 { font-family: ui-monospace, monospace; font-size: 14px; font-weight: 600; letter-spacing: .03em; margin: 0 0 10px; }
+  .session-entry .markdown { font-size: 13px; line-height: 1.6; }
+  .session-entry .markdown :global(p) { color: #3d465f; margin: 8px 0; }
+  .session-entry .markdown :global(strong) { color: var(--ink); }
+  .session-entry .markdown :global(ul) { margin: 8px 0; padding-left: 20px; }
+  .session-entry .markdown :global(li) { color: #3d465f; margin: 4px 0; }
+  .session-entry .markdown :global(code) { background: var(--primary-soft); color: #8d3c20; font-size: 12px; padding: 1px 5px; }
+  .session-entry .markdown :global(a) { color: var(--primary); }
+</style>

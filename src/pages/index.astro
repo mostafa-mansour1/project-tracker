@@ -1,6 +1,6 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
-import { getProject, getProjects, parseTaskBoard, type TaskStatus } from '../lib/content';
+import { getProject, getProjects, groupArchivedTasks, parseTaskArchives, parseTaskBoard, toDocumentSlug, type TaskStatus } from '../lib/content';
 
 export const prerender = false;
 
@@ -8,11 +8,16 @@ const projects = getProjects();
 const project = getProject(Astro.url.searchParams.get('project'));
 const phases = parseTaskBoard(project);
 const tasks = phases.flatMap((phase) => phase.tasks);
+const archived = parseTaskArchives(project);
+const archiveGroups = groupArchivedTasks(archived);
 const counts = tasks.reduce(
   (result, task) => ({ ...result, [task.status]: result[task.status] + 1 }),
   { pending: 0, active: 0, done: 0, blocked: 0 } satisfies Record<TaskStatus, number>,
 );
-const completedPercent = tasks.length === 0 ? 0 : Math.round((counts.done / tasks.length) * 100);
+// Archived tasks are completed history — fold them into the closed/total counts.
+const totalTasks = tasks.length + archived.length;
+const closedTasks = counts.done + archived.length;
+const completedPercent = totalTasks === 0 ? 0 : Math.round((closedTasks / totalTasks) * 1000) / 10;
 const statusLabels: Record<TaskStatus, string> = {
   pending: 'Pending',
   active: 'In progress',
@@ -24,12 +29,12 @@ const statusLabels: Record<TaskStatus, string> = {
 <BaseLayout title="Task board" project={project} projects={projects}>
   <section class="stats" aria-label="Task statistics">
     <article class="stat completion-stat">
-      <div><span>Plan completion</span><strong>{completedPercent}%</strong><small>{counts.done} of {tasks.length} tasks closed</small></div>
+      <div><span>Plan completion</span><strong>{completedPercent}%</strong><small>{closedTasks} of {totalTasks} tasks closed</small></div>
       <div class="stat-progress"><i style={`width: ${completedPercent}%`}></i></div>
     </article>
     <div class="stat-facts">
-      <article class="stat"><strong>{tasks.length}</strong><span>Total tasks</span></article>
-      <article class="stat"><strong>{phases.length}</strong><span>Milestones</span></article>
+      <article class="stat"><strong>{totalTasks}</strong><span>Total tasks</span></article>
+      <article class="stat"><strong>{archived.length}</strong><span>Archived</span></article>
       <article class="stat active"><strong>{counts.active}</strong><span>In motion</span></article>
       <article class="stat blocked"><strong>{counts.blocked}</strong><span>Risks</span></article>
     </div>
@@ -54,7 +59,7 @@ const statusLabels: Record<TaskStatus, string> = {
         <option value="blocked">Blocked</option>
       </select>
     </label>
-    <p id="visible-count" aria-live="polite">{tasks.length} tasks shown</p>
+    <p id="visible-count" aria-live="polite">{totalTasks} tasks shown</p>
   </section>
 
   <section class="phases">
@@ -118,6 +123,70 @@ const statusLabels: Record<TaskStatus, string> = {
       );
     })}
   </section>
+
+  {archiveGroups.length > 0 && (
+    <section class="archive-board">
+      <header class="archive-board-head">
+        <div>
+          <p class="eyebrow">Archive · {archived.length} completed tasks</p>
+          <h2>Shipped history</h2>
+        </div>
+        <a class="archive-link" href={`/history?project=${encodeURIComponent(project.key)}`}>Full session log →</a>
+      </header>
+      {archiveGroups.map((group, groupIndex) => {
+        const archiveDoc = group.archive ? `/document?project=${encodeURIComponent(project.key)}&doc=${toDocumentSlug(group.archive)}` : null;
+        return (
+          <article class="phase archive-phase" data-phase>
+            <div class="phase-marker"><span>✓</span><i></i></div>
+            <div class="phase-content panel">
+              <header>
+                <div>
+                  <p class="eyebrow">Archive {String(groupIndex + 1).padStart(2, '0')} · {group.tasks.length} deliverables</p>
+                  <code class="archive-source">{group.archive || 'Unsorted'}</code>
+                </div>
+                {archiveDoc && <a class="archive-link" href={archiveDoc}>Open archive →</a>}
+              </header>
+              <div class="task-grid">
+                {group.tasks.map((task, taskIndex) => (
+                  <details class="task" data-task data-status="done" data-search={`${task.id} ${task.title} ${task.description} ${task.criteria.map((criterion) => criterion.text).join(' ')}`.toLowerCase()}>
+                    <summary>
+                      <span class="task-sequence">{String(groupIndex + 1).padStart(2, '0')}.{String(taskIndex + 1).padStart(2, '0')}</span>
+                      <span class="task-heading">
+                        <span class="task-meta">
+                          <span class="task-id">{task.id}</span>
+                          <span class="status-chip done">Done</span>
+                        </span>
+                        <strong>{task.title}</strong>
+                        <small>{task.description || `Archived · ${group.archive || 'history'}`}</small>
+                      </span>
+                    </summary>
+                    <div class="task-body">
+                      {task.description && <p class="archive-description">{task.description}</p>}
+                      {task.criteria.length > 0 ? (
+                        <>
+                          <div class="criteria-meta"><span>Archived details</span><strong>{task.criteria.length}</strong></div>
+                          <ul>
+                            {task.criteria.map((criterion) => (
+                              <li class="checked"><span>✓</span>{criterion.text}</li>
+                            ))}
+                          </ul>
+                          {archiveDoc && <p class="archive-detail-link"><a href={archiveDoc}>Open source archive →</a></p>}
+                        </>
+                      ) : archiveDoc ? (
+                        <p class="muted">No acceptance criteria found. <a href={archiveDoc}>Open source archive →</a></p>
+                      ) : (
+                        <p class="muted">Archived task — no archive file recorded.</p>
+                      )}
+                    </div>
+                  </details>
+                ))}
+              </div>
+            </div>
+          </article>
+        );
+      })}
+    </section>
+  )}
 
   <script>
     const search = document.querySelector<HTMLInputElement>('#task-search');
@@ -209,6 +278,16 @@ const statusLabels: Record<TaskStatus, string> = {
   .task li span { border: 1px solid #b8b8ae; display: inline-grid; flex: 0 0 16px; font-size: 10px; height: 16px; place-items: center; }
   .task li.checked { color: var(--success); }
   .task li.checked span { background: var(--success); border-color: var(--success); color: white; }
+
+  .archive-board { margin-top: 30px; }
+  .archive-board-head { align-items: end; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; margin-bottom: 4px; padding-top: 26px; }
+  .archive-board-head h2 { font-size: 22px; margin: 4px 0 0; }
+  .archive-link { color: var(--primary); font-size: 13px; font-weight: 550; text-decoration: none; white-space: nowrap; }
+  .archive-phase .phase-marker span { background: var(--success); }
+  .archive-source { color: var(--primary); font-size: 12px; overflow-wrap: anywhere; }
+  .archive-description { color: #3d465f; line-height: 1.5; margin: 0 0 12px !important; }
+  .archive-detail-link { font-size: 12px !important; margin-top: 12px !important; }
+  .archive-detail-link a { color: var(--primary); text-decoration: none; }
   [hidden] { display: none !important; }
 
   @container (max-width: 1050px) {
