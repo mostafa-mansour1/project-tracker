@@ -1,0 +1,147 @@
+---
+interface Props {
+  title: string;
+  project: { key: string; name: string; scope: string };
+  projects: Array<{ key: string; name: string; scope: string }>;
+  description?: string;
+}
+
+const {
+  title,
+  project,
+  projects,
+  description = `Visual project tracker for ${project.name}`,
+} = Astro.props;
+const projectQuery = `?project=${encodeURIComponent(project.key)}`;
+const isDocuments = title !== 'Task board';
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="description" content={description} />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>✦</text></svg>" />
+    <title>{title} · {project.name}</title>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="site-rail">
+        <a class="brand" href={`/${projectQuery}`} aria-label="Project tracker home">
+          <span class="brand-mark">P</span>
+          <span>PLAN/<b>WORK</b></span>
+        </a>
+
+        <div class="rail-project">
+          <span class="rail-label">Current plan</span>
+          <strong>{project.name}</strong>
+          <small>{project.scope} workspace</small>
+        </div>
+
+        <nav aria-label="Main navigation">
+          <a class:list={[{ active: !isDocuments }]} href={`/${projectQuery}`}>
+            <span>01</span> Roadmap
+          </a>
+          <a class:list={[{ active: isDocuments }]} href={`/documents${projectQuery}`}>
+            <span>02</span> Project files
+          </a>
+        </nav>
+
+        <div class="rail-note">
+          <span class="rail-label">Source of truth</span>
+          <code>TASKS.md</code>
+          <p>Plan data is read directly from the repository.</p>
+        </div>
+      </aside>
+
+      <div class="workspace">
+        <header class="site-header">
+          <div class="header-inner">
+            <div>
+              <span class="rail-label">Workspace / {project.scope}</span>
+              <strong>{title}</strong>
+            </div>
+            <form class="project-picker">
+              <label for="project">Switch plan</label>
+              <select id="project" name="project" onchange="this.form.submit()">
+                {projects.map((entry) => <option value={entry.key} selected={entry.key === project.key}>{entry.scope} / {entry.name}</option>)}
+              </select>
+            </form>
+          </div>
+        </header>
+        <main>
+          <slot />
+        </main>
+      </div>
+    </div>
+  </body>
+</html>
+
+<style is:global>
+  :root {
+    --ink: #1f211d;
+    --muted: #74766d;
+    --line: #d9d6ca;
+    --surface: #fdfbf4;
+    --canvas: #eeece3;
+    --rail: #1d211c;
+    --primary: #e15a2b;
+    --primary-soft: #f8dfd4;
+    --success: #39705a;
+    --success-soft: #dcebe2;
+    --warning: #a76716;
+    --warning-soft: #f3e4c8;
+    --danger: #a94536;
+    --danger-soft: #f1d8d2;
+    font-family: "Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif;
+    color: var(--ink);
+    background: var(--canvas);
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; min-width: 320px; }
+  a { color: inherit; }
+  button, input, select { font: inherit; }
+  .app-shell { display: grid; grid-template-columns: 250px minmax(0, 1fr); min-height: 100vh; }
+  .site-rail { background: var(--rail); color: #f5f0e5; display: flex; flex-direction: column; min-height: 100vh; padding: 28px 20px; position: sticky; top: 0; height: 100vh; }
+  .brand { align-items: center; display: flex; font-size: 13px; font-weight: 450; gap: 10px; letter-spacing: .11em; text-decoration: none; }
+  .brand b { font-weight: 650; }
+  .brand-mark { background: var(--primary); color: white; display: grid; font-size: 16px; font-weight: 650; height: 34px; place-items: center; width: 34px; }
+  .rail-project { border-bottom: 1px solid #3b3f37; border-top: 1px solid #3b3f37; display: grid; gap: 4px; margin: 38px 0 24px; padding: 20px 0; }
+  .rail-project strong { font-size: 18px; font-weight: 550; line-height: 1.15; }
+  .rail-project small, .rail-note p { color: #a9ab9f; font-size: 11px; }
+  .rail-label { color: #9b9d91; font-size: 9px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; }
+  nav { display: grid; gap: 3px; }
+  nav a { align-items: center; border-left: 2px solid transparent; color: #aaaCA2; display: flex; font-size: 13px; font-weight: 500; gap: 14px; padding: 11px 12px; text-decoration: none; }
+  nav a span { color: #6e7168; font-family: ui-monospace, monospace; font-size: 10px; }
+  nav a:hover, nav a.active { background: #292e27; border-left-color: var(--primary); color: white; }
+  nav a.active span { color: var(--primary); }
+  .rail-note { border-top: 1px solid #3b3f37; margin-top: auto; padding-top: 18px; }
+  .rail-note code { color: #f4a17d; display: block; font-size: 12px; margin-top: 8px; }
+  .rail-note p { line-height: 1.5; margin-bottom: 0; }
+  .workspace { container-type: inline-size; min-width: 0; }
+  .site-header { background: rgba(238, 236, 227, .92); border-bottom: 1px solid var(--line); min-height: 58px; position: sticky; top: 0; z-index: 20; backdrop-filter: blur(14px); }
+  .header-inner { align-items: center; display: flex; justify-content: space-between; min-height: 58px; padding: 8px clamp(20px, 3vw, 40px); width: 100%; }
+  .header-inner > div { display: grid; gap: 3px; }
+  .header-inner > div strong { font-size: 14px; font-weight: 550; }
+  .project-picker { align-items: center; display: flex; gap: 10px; }
+  .project-picker label { color: var(--muted); font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; }
+  .project-picker select { background: var(--surface); border: 1px solid var(--line); border-radius: 0; color: var(--ink); min-height: 38px; padding: 0 32px 0 11px; }
+  main { padding: clamp(20px, 3vw, 40px); }
+  h1, h2, h3 { letter-spacing: -0.025em; }
+  .eyebrow { color: var(--primary); font-size: 10px; font-weight: 650; letter-spacing: 0.16em; text-transform: uppercase; }
+  .muted { color: var(--muted); }
+  .panel { background: var(--surface); border: 1px solid var(--line); }
+
+  @media (max-width: 820px) {
+    .app-shell { display: block; }
+    .site-rail { height: auto; min-height: 0; padding: 14px 18px; position: static; }
+    .rail-project, .rail-note { display: none; }
+    .site-rail nav { display: flex; margin-top: 14px; }
+    .site-header { position: static; }
+    .header-inner { align-items: flex-start; flex-wrap: wrap; gap: 10px; }
+    .project-picker { width: 100%; }
+    .project-picker select { flex: 1; }
+  }
+</style>

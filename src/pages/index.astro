@@ -1,0 +1,256 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { getProject, getProjects, parseTaskBoard, type TaskStatus } from '../lib/content';
+
+export const prerender = false;
+
+const projects = getProjects();
+const project = getProject(Astro.url.searchParams.get('project'));
+const phases = parseTaskBoard(project);
+const tasks = phases.flatMap((phase) => phase.tasks);
+const counts = tasks.reduce(
+  (result, task) => ({ ...result, [task.status]: result[task.status] + 1 }),
+  { pending: 0, active: 0, done: 0, blocked: 0 } satisfies Record<TaskStatus, number>,
+);
+const completedPercent = tasks.length === 0 ? 0 : Math.round((counts.done / tasks.length) * 100);
+const statusLabels: Record<TaskStatus, string> = {
+  pending: 'Pending',
+  active: 'In progress',
+  done: 'Done',
+  blocked: 'Blocked',
+};
+---
+
+<BaseLayout title="Task board" project={project} projects={projects}>
+  <section class="stats" aria-label="Task statistics">
+    <article class="stat completion-stat">
+      <div><span>Plan completion</span><strong>{completedPercent}%</strong><small>{counts.done} of {tasks.length} tasks closed</small></div>
+      <div class="stat-progress"><i style={`width: ${completedPercent}%`}></i></div>
+    </article>
+    <div class="stat-facts">
+      <article class="stat"><strong>{tasks.length}</strong><span>Total tasks</span></article>
+      <article class="stat"><strong>{phases.length}</strong><span>Milestones</span></article>
+      <article class="stat active"><strong>{counts.active}</strong><span>In motion</span></article>
+      <article class="stat blocked"><strong>{counts.blocked}</strong><span>Risks</span></article>
+    </div>
+  </section>
+
+  <section class="toolbar">
+    <div class="toolbar-title">
+      <span class="eyebrow">Plan controls</span>
+      <strong>Milestone roadmap</strong>
+    </div>
+    <label>
+      <span>Search deliverables</span>
+      <input id="task-search" type="search" placeholder="Search ID, title, description…" />
+    </label>
+    <label>
+      <span>Status</span>
+      <select id="status-filter">
+        <option value="all">All statuses</option>
+        <option value="active">In progress</option>
+        <option value="pending">Pending</option>
+        <option value="done">Done</option>
+        <option value="blocked">Blocked</option>
+      </select>
+    </label>
+    <p id="visible-count" aria-live="polite">{tasks.length} tasks shown</p>
+  </section>
+
+  <section class="phases">
+    {phases.map((phase, phaseIndex) => {
+      const phaseDone = phase.tasks.filter((task) => task.status === 'done').length;
+      const phasePercent = Math.round((phaseDone / phase.tasks.length) * 100);
+      return (
+        <article class="phase" data-phase>
+          <div class="phase-marker">
+            <span>{String(phaseIndex + 1).padStart(2, '0')}</span>
+            <i></i>
+          </div>
+          <div class="phase-content panel">
+          <header>
+            <div>
+              <p class="eyebrow">Milestone {String(phaseIndex + 1).padStart(2, '0')} · {phase.tasks.length} deliverables</p>
+              <h2>{phase.name}</h2>
+              <p class="muted">{phase.goal}</p>
+            </div>
+            <div class="phase-progress">
+              <strong>{phaseDone}/{phase.tasks.length}</strong>
+              <span>complete</span>
+            </div>
+          </header>
+          <div class="progress-track"><span style={`width: ${phasePercent}%`}></span></div>
+          <div class="task-grid">
+            {phase.tasks.map((task) => {
+              const criteriaDone = task.criteria.filter((criterion) => criterion.status === 'done').length;
+              const search = `${task.id} ${task.title} ${task.description} ${task.criteria.map((criterion) => criterion.text).join(' ')}`.toLowerCase();
+              return (
+                <details class="task" data-task data-status={task.status} data-search={search} open={task.status === 'active'}>
+                  <summary>
+                    <span class="task-sequence">{String(phaseIndex + 1).padStart(2, '0')}.{String(phase.tasks.indexOf(task) + 1).padStart(2, '0')}</span>
+                    <span class="task-heading">
+                      <span class="task-meta">
+                        <span class="task-id">{task.id}</span>
+                        <span class={`status-chip ${task.status}`}>{statusLabels[task.status]}</span>
+                      </span>
+                      <strong>{task.title}</strong>
+                      <small>{task.description || 'No description provided.'}</small>
+                    </span>
+                  </summary>
+                  <div class="task-body">
+                    <div class="criteria-meta"><span>Acceptance criteria</span><strong>{criteriaDone}/{task.criteria.length}</strong></div>
+                    {task.criteria.length > 0 ? (
+                      <ul>
+                        {task.criteria.map((criterion) => (
+                          <li class={criterion.status === 'done' ? 'checked' : ''}>
+                            <span>{criterion.status === 'done' ? '✓' : ''}</span>{criterion.text}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : <p class="muted">No acceptance criteria listed.</p>}
+                  </div>
+                </details>
+              );
+            })}
+          </div>
+          </div>
+        </article>
+      );
+    })}
+  </section>
+
+  <script>
+    const search = document.querySelector<HTMLInputElement>('#task-search');
+    const status = document.querySelector<HTMLSelectElement>('#status-filter');
+    const count = document.querySelector<HTMLElement>('#visible-count');
+    const tasks = [...document.querySelectorAll<HTMLElement>('[data-task]')];
+    const phases = [...document.querySelectorAll<HTMLElement>('[data-phase]')];
+
+    function filterTasks() {
+      const query = search?.value.trim().toLowerCase() ?? '';
+      const selectedStatus = status?.value ?? 'all';
+      let visible = 0;
+
+      for (const task of tasks) {
+        const matchesText = task.dataset.search?.includes(query) ?? false;
+        const matchesStatus = selectedStatus === 'all' || task.dataset.status === selectedStatus;
+        task.hidden = !(matchesText && matchesStatus);
+        if (!task.hidden) visible += 1;
+      }
+
+      for (const phase of phases) {
+        phase.hidden = !phase.querySelector('[data-task]:not([hidden])');
+      }
+
+      if (count) count.textContent = `${visible} ${visible === 1 ? 'task' : 'tasks'} shown`;
+    }
+
+    search?.addEventListener('input', filterTasks);
+    status?.addEventListener('change', filterTasks);
+  </script>
+</BaseLayout>
+
+<style>
+  .stats { background: var(--surface); border: 1px solid var(--line); display: grid; grid-template-columns: minmax(280px, .8fr) minmax(420px, 1.2fr); margin-bottom: 20px; }
+  .completion-stat { align-items: end; border-right: 1px solid var(--line); display: grid; gap: 18px; grid-template-columns: auto minmax(100px, 1fr); padding: 16px 18px; }
+  .completion-stat > div:first-child { display: grid; gap: 2px; }
+  .stat span { color: var(--muted); font-size: 9px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; }
+  .completion-stat strong { color: var(--primary); font-size: 30px; font-weight: 400; line-height: 1; }
+  .completion-stat small { color: var(--muted); font-size: 10px; }
+  .stat-progress { background: var(--line); height: 4px; margin-bottom: 5px; overflow: hidden; }
+  .stat-progress i { background: var(--primary); display: block; height: 100%; }
+  .stat-facts { display: grid; grid-template-columns: repeat(4, 1fr); }
+  .stat-facts .stat { align-content: center; border-right: 1px solid var(--line); display: grid; gap: 3px; justify-items: center; min-width: 0; padding: 12px 10px; }
+  .stat-facts .stat:last-child { border-right: 0; }
+  .stat-facts strong { color: var(--ink); font-size: 24px; font-weight: 400; }
+  .stat-facts .active strong { color: var(--primary); }
+  .stat-facts .blocked strong { color: var(--danger); }
+  .toolbar { align-items: end; border-bottom: 1px solid var(--line); display: grid; gap: 12px; grid-template-columns: minmax(170px, 1fr) minmax(220px, 1.2fr) 180px auto; margin-bottom: 16px; padding-bottom: 14px; }
+  .toolbar-title { display: grid; gap: 4px; }
+  .toolbar-title strong { font-size: 18px; font-weight: 550; }
+  .toolbar label span { color: var(--muted); display: block; font-size: 12px; font-weight: 550; margin: 0 0 6px 3px; }
+  .toolbar input, .toolbar select { background: var(--surface); border: 1px solid var(--line); border-radius: 0; color: var(--ink); min-height: 42px; padding: 0 12px; width: 100%; }
+  .toolbar p { color: var(--muted); font-size: 13px; font-weight: 500; margin: 0 4px 14px; white-space: nowrap; }
+  .phases { display: grid; gap: 0; }
+  .phase { display: grid; grid-template-columns: 34px minmax(0, 1fr); }
+  .phase-marker { align-items: center; display: flex; flex-direction: column; z-index: 1; }
+  .phase-marker span { background: var(--primary); color: white; display: grid; font-family: ui-monospace, monospace; font-size: 11px; font-weight: 600; height: 34px; place-items: center; width: 34px; }
+  .phase-marker i { background: var(--line); flex: 1; width: 1px; }
+  .phase-content { margin-bottom: 16px; padding: clamp(16px, 2vw, 24px); }
+  .phase-content > header { display: flex; gap: 20px; justify-content: space-between; }
+  .phase-content > header > div:first-child { min-width: 0; }
+  .phase h2 { font-size: 25px; font-weight: 550; margin: 5px 0 7px; }
+  .phase p { font-size: 14px; margin: 0; }
+  .phase-progress { align-items: end; display: flex; flex-direction: column; white-space: nowrap; }
+  .phase-progress strong { font-size: 22px; font-weight: 450; }
+  .phase-progress span { color: var(--muted); font-size: 11px; }
+  .progress-track { background: var(--line); height: 3px; margin: 20px 0 10px; overflow: hidden; }
+  .progress-track span { background: var(--success); display: block; height: 100%; }
+  .task-grid { display: grid; }
+  .task { border-bottom: 1px solid var(--line); overflow: hidden; }
+  .task:last-child { border-bottom: 0; }
+  .task[open] { background: #f7f2e7; }
+  .task summary { align-items: center; cursor: pointer; display: flex; gap: 12px; list-style: none; padding: 14px; }
+  .task summary::-webkit-details-marker { display: none; }
+  .task-sequence { color: #aaa99f; flex: 0 0 42px; font-family: ui-monospace, monospace; font-size: 10px; }
+  .task-heading { display: grid; flex: 1; gap: 3px; min-width: 0; }
+  .task-heading strong { font-size: 15px; font-weight: 550; }
+  .task-heading small { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .task-meta { align-items: center; display: flex; gap: 7px; }
+  .task-id { color: var(--primary); font-family: ui-monospace, monospace; font-size: 9px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; }
+  .status-chip { background: var(--canvas); border: 1px solid var(--line); color: var(--muted); font-size: 8px; font-weight: 600; letter-spacing: .05em; padding: 2px 6px; text-transform: uppercase; }
+  .status-chip.active { background: var(--primary-soft); border-color: #e9b6a1; color: var(--primary); }
+  .status-chip.done { background: var(--success-soft); border-color: #afd0bc; color: var(--success); }
+  .status-chip.blocked { background: var(--danger-soft); border-color: #dfaea5; color: var(--danger); }
+  .task-body { border-top: 1px dashed var(--line); padding: 15px 15px 18px 68px; }
+  .criteria-meta { display: flex; font-size: 12px; font-weight: 550; justify-content: space-between; }
+  .task ul { display: grid; gap: 7px; list-style: none; margin: 12px 0 0; padding: 0; }
+  .task li { align-items: flex-start; color: var(--muted); display: flex; font-size: 13px; gap: 8px; line-height: 1.4; }
+  .task li span { border: 1px solid #b8b8ae; display: inline-grid; flex: 0 0 16px; font-size: 10px; height: 16px; place-items: center; }
+  .task li.checked { color: var(--success); }
+  .task li.checked span { background: var(--success); border-color: var(--success); color: white; }
+  [hidden] { display: none !important; }
+
+  @container (max-width: 1050px) {
+    .stats { grid-template-columns: 1fr; }
+    .completion-stat { border-bottom: 1px solid var(--line); border-right: 0; }
+    .toolbar { grid-template-columns: 1fr auto; }
+    .toolbar-title { align-self: stretch; }
+    .toolbar label { grid-row: 2; }
+    .toolbar label:nth-of-type(1) { grid-column: 1; }
+    .toolbar label:nth-of-type(2) { grid-column: 2; }
+    .toolbar p { grid-column: 2; grid-row: 1; text-align: right; }
+  }
+
+  @container (max-width: 760px) {
+    .completion-stat { grid-template-columns: 1fr; }
+    .stat-facts { grid-template-columns: repeat(2, 1fr); }
+    .stat-facts .stat:nth-child(2) { border-right: 0; }
+    .stat-facts .stat:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+    .toolbar { grid-template-columns: 1fr; }
+    .toolbar label, .toolbar label:nth-of-type(1), .toolbar label:nth-of-type(2), .toolbar p { grid-column: 1; grid-row: auto; }
+    .toolbar p { margin: 0 3px; }
+    .phase-marker span { height: 26px; width: 26px; }
+    .phase { grid-template-columns: 26px minmax(0, 1fr); }
+    .phase-content { padding: 14px 16px; }
+    .phase-content > header { gap: 10px; }
+    .phase h2 { font-size: 21px; }
+    .phase .eyebrow { overflow-wrap: anywhere; }
+    .phase-progress { flex: 0 0 auto; }
+    .task summary { align-items: flex-start; padding: 12px 0; }
+    .task-sequence { display: none; }
+    .task-heading small { overflow: visible; text-overflow: clip; white-space: normal; }
+    .task-body { padding-left: 0; padding-right: 0; }
+  }
+
+  @media (max-width: 800px) {
+    .hero { grid-template-columns: 1fr; }
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .toolbar { grid-template-columns: 1fr; }
+    .toolbar p { margin: 0 4px; }
+  }
+  @media (max-width: 620px) {
+    .task summary { align-items: flex-start; }
+    .task-body { padding-left: 15px; }
+  }
+</style>

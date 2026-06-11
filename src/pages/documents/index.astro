@@ -1,0 +1,52 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getDocuments, getProject, getProjects } from '../../lib/content';
+
+export const prerender = false;
+
+const projects = getProjects();
+const project = getProject(Astro.url.searchParams.get('project'));
+const documents = getDocuments(project);
+const groups = [...new Set(documents.map((document) => document.group))];
+const projectQuery = `project=${encodeURIComponent(project.key)}`;
+---
+
+<BaseLayout title="Documents" project={project} projects={projects}>
+  <header class="page-heading">
+    <p class="eyebrow">Project files / Repository library</p>
+    <h1>Planning archive</h1>
+    <p class="muted">Briefs, decisions, and task history rendered from the repository.</p>
+  </header>
+  <div class="document-groups">
+    {groups.map((group) => (
+      <section class="panel">
+        <div class="group-heading"><span>{String(groups.indexOf(group) + 1).padStart(2, '0')}</span><h2>{group}</h2></div>
+        <div class="document-list">
+          {documents.filter((document) => document.group === group).map((document) => (
+            <a href={`/document?${projectQuery}&doc=${encodeURIComponent(document.slug)}`}>
+              <span>{document.title}</span>
+              <small>{document.path}</small>
+            </a>
+          ))}
+        </div>
+      </section>
+    ))}
+  </div>
+</BaseLayout>
+
+<style>
+  .page-heading { border-bottom: 1px solid var(--line); margin-bottom: 30px; padding-bottom: 30px; }
+  h1 { font-size: clamp(44px, 7vw, 82px); font-weight: 500; line-height: .95; margin: 12px 0 16px; }
+  .page-heading p { margin: 0; }
+  .document-groups { display: grid; gap: 18px; grid-template-columns: repeat(2, 1fr); }
+  section { padding: 22px; }
+  .group-heading { align-items: center; border-bottom: 1px solid var(--line); display: flex; gap: 12px; margin-bottom: 6px; padding-bottom: 14px; }
+  .group-heading span { color: var(--primary); font-family: ui-monospace, monospace; font-size: 10px; font-weight: 600; }
+  h2 { font-size: 20px; font-weight: 550; margin: 0; }
+  .document-list { display: grid; gap: 8px; }
+  .document-list a { border-bottom: 1px solid var(--line); display: grid; gap: 4px; padding: 13px 3px; text-decoration: none; }
+  .document-list a:hover { color: var(--primary); padding-left: 8px; }
+  .document-list span { font-size: 14px; font-weight: 500; }
+  .document-list small { color: var(--muted); font-family: ui-monospace, monospace; font-size: 10px; }
+  @media (max-width: 800px) { .document-groups { grid-template-columns: 1fr; } }
+</style>

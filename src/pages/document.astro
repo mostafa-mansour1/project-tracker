@@ -1,0 +1,50 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { getDocuments, getProject, getProjects, renderMarkdown } from '../lib/content';
+
+export const prerender = false;
+
+const projects = getProjects();
+const project = getProject(Astro.url.searchParams.get('project'));
+const documentSlug = Astro.url.searchParams.get('doc');
+const document = getDocuments(project).find((entry) => entry.slug === documentSlug);
+if (!document) return Astro.redirect(`/documents?project=${encodeURIComponent(project.key)}`);
+const html = renderMarkdown(document.source);
+---
+
+<BaseLayout title={document.title} project={project} projects={projects}>
+  <div class="document-shell">
+    <aside class="panel">
+      <a href={`/documents?project=${encodeURIComponent(project.key)}`}>← All documents</a>
+      <span>Source file</span>
+      <code>{document.path}</code>
+    </aside>
+    <article class="markdown panel" set:html={html}></article>
+  </div>
+</BaseLayout>
+
+<style>
+  .document-shell { align-items: start; display: grid; gap: 22px; grid-template-columns: 210px minmax(0, 1fr); }
+  aside { display: grid; gap: 10px; padding: 16px; position: sticky; top: 92px; }
+  aside a { color: var(--primary); font-size: 13px; font-weight: 550; text-decoration: none; }
+  aside span { color: var(--muted); font-size: 11px; font-weight: 600; margin-top: 12px; text-transform: uppercase; }
+  aside code { overflow-wrap: anywhere; }
+  .markdown { line-height: 1.65; overflow: hidden; padding: clamp(22px, 5vw, 58px); }
+  .markdown :global(h1) { font-size: clamp(32px, 5vw, 52px); line-height: 1.05; margin-top: 0; }
+  .markdown :global(h2) { border-top: 1px solid var(--line); font-size: 26px; margin-top: 44px; padding-top: 26px; }
+  .markdown :global(h3) { font-size: 20px; margin-top: 32px; }
+  .markdown :global(h4) { color: var(--primary); font-size: 16px; margin-top: 26px; }
+  .markdown :global(p), .markdown :global(li) { color: #3d465f; }
+  .markdown :global(a) { color: var(--primary); }
+  .markdown :global(code) { background: var(--primary-soft); color: #8d3c20; padding: 2px 5px; }
+  .markdown :global(pre) { background: var(--rail); color: #f4efe5; overflow-x: auto; padding: 18px; }
+  .markdown :global(pre code) { background: transparent; color: inherit; padding: 0; }
+  .markdown :global(blockquote) { background: var(--primary-soft); border-left: 4px solid var(--primary); margin: 20px 0; padding: 8px 18px; }
+  .markdown :global(table) { border-collapse: collapse; display: block; overflow-x: auto; width: 100%; }
+  .markdown :global(th), .markdown :global(td) { border: 1px solid var(--line); padding: 9px 12px; text-align: left; }
+  .markdown :global(th) { background: var(--canvas); }
+  @media (max-width: 800px) {
+    .document-shell { grid-template-columns: 1fr; }
+    aside { position: static; }
+  }
+</style>

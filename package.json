@@ -1,0 +1,12 @@
+{
+  "name": "project-tracker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev"
+  },
+  "dependencies": {
+    "astro": "^5.9.3",
+    "marked": "^15.0.12"
+  }
+}
