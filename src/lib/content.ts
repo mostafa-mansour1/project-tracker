@@ -295,9 +295,9 @@ export function getDocuments(project: ProjectEntry): DocumentEntry[] {
   const entries = [
     { file: 'README.md', group: 'Overview' },
     { file: 'TASKS.md', group: 'Planning' },
-    { file: 'SESSIONS.md', group: 'Planning' },
-    ...listMarkdown(project, 'docs').filter(notTaskIndex).map((file) => ({ file, group: 'Product docs' })),
-    ...listMarkdown(project, 'tasks').filter(notTaskIndex).map((file) => ({ file, group: 'Task history' })),
+    ...sessionFileCandidates.map((file) => ({ file, group: 'Planning' })),
+    ...listMarkdown(project, 'docs').filter(notTrackerMetadata).map((file) => ({ file, group: 'Product docs' })),
+    ...listMarkdown(project, 'tasks').filter(notTrackerMetadata).map((file) => ({ file, group: 'Task history' })),
   ].filter(({ file }) => fs.existsSync(path.join(project.root, file)));
 
   return entries.map(({ file, group }) => {
@@ -345,6 +345,7 @@ function stripTicks(value: string): string {
   return value.replaceAll('`', '');
 }
 
-function notTaskIndex(file: string): boolean {
-  return path.basename(file).toLowerCase() !== 'tasks.index.md';
+function notTrackerMetadata(file: string): boolean {
+  const basename = path.basename(file).toLowerCase();
+  return basename !== 'tasks.index.md' && basename !== 'sessions.md';
 }
