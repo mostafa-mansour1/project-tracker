@@ -292,13 +292,12 @@ export function groupArchivedTasks(tasks: ArchivedTask[]): ArchiveGroup[] {
 }
 
 export function getDocuments(project: ProjectEntry): DocumentEntry[] {
-  const entries = [
-    { file: 'README.md', group: 'Overview' },
-    { file: 'TASKS.md', group: 'Planning' },
-    ...sessionFileCandidates.map((file) => ({ file, group: 'Planning' })),
-    ...listMarkdown(project, 'docs').filter(notTrackerMetadata).map((file) => ({ file, group: 'Product docs' })),
-    ...listMarkdown(project, 'tasks').filter(notTrackerMetadata).map((file) => ({ file, group: 'Task history' })),
-  ].filter(({ file }) => fs.existsSync(path.join(project.root, file)));
+  const entries = listMarkdown(project, '.')
+    .map((file) => ({ file, group: documentGroup(file) }))
+    .sort((left, right) => {
+      const groupOrder = documentGroupOrder.indexOf(left.group) - documentGroupOrder.indexOf(right.group);
+      return groupOrder || left.file.localeCompare(right.file);
+    });
 
   return entries.map(({ file, group }) => {
     const source = readRepoFile(project, file);
@@ -324,11 +323,19 @@ function listMarkdown(project: ProjectEntry, directory: string): string[] {
   const directoryPath = path.join(project.root, directory);
   if (!fs.existsSync(directoryPath)) return [];
 
-  return fs
-    .readdirSync(directoryPath)
-    .filter((file) => file.endsWith('.md'))
-    .sort()
-    .map((file) => `${directory}/${file}`);
+  const files: string[] = [];
+  const visit = (currentPath: string) => {
+    for (const entry of fs.readdirSync(currentPath, { withFileTypes: true })) {
+      if (entry.isDirectory() && !ignoredDocumentDirectories.has(entry.name)) {
+        visit(path.join(currentPath, entry.name));
+      } else if (entry.isFile() && entry.name.toLowerCase().endsWith('.md')) {
+        files.push(path.relative(project.root, path.join(currentPath, entry.name)));
+      }
+    }
+  };
+
+  visit(directoryPath);
+  return files.sort();
 }
 
 function readProjectName(projectRoot: string): string {
@@ -345,7 +352,35 @@ function stripTicks(value: string): string {
   return value.replaceAll('`', '');
 }
 
-function notTrackerMetadata(file: string): boolean {
-  const basename = path.basename(file).toLowerCase();
-  return basename !== 'tasks.index.md' && basename !== 'sessions.md';
+const ignoredDocumentDirectories = new Set([
+  '.astro',
+  '.git',
+  '.next',
+  '.turbo',
+  'build',
+  'coverage',
+  'dist',
+  'node_modules',
+  'out',
+]);
+
+const documentGroupOrder = [
+  'Overview',
+  'Planning',
+  'Feature docs',
+  'Product docs',
+  'Module docs',
+  'Task history',
+  'Repository docs',
+];
+
+function documentGroup(file: string): string {
+  if (file === 'README.md') return 'Overview';
+  if (file === 'TASKS.md' || sessionFileCandidates.includes(file)) return 'Planning';
+  if (file.startsWith('docs/ai/')) return 'Feature docs';
+  if (file.startsWith('docs/')) return 'Product docs';
+  if (file.startsWith('tasks/')) return 'Task history';
+  if (file.startsWith('.github/')) return 'Repository docs';
+  if (file.includes('/')) return 'Module docs';
+  return 'Repository docs';
 }

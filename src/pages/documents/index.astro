@@ -14,8 +14,8 @@ const projectQuery = `project=${encodeURIComponent(project.key)}`;
 <BaseLayout title="Documents" project={project} projects={projects}>
   <header class="page-heading">
     <p class="eyebrow">Project files / Repository library</p>
-    <h1>Planning archive</h1>
-    <p class="muted">Briefs, decisions, and task history rendered from the repository.</p>
+    <h1>Project files</h1>
+    <p class="muted">All Markdown documentation discovered in the selected repository.</p>
   </header>
   <div class="document-groups">
     {groups.map((group) => (
