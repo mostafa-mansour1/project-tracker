@@ -341,7 +341,11 @@ function listMarkdown(project: ProjectEntry, directory: string): string[] {
 function readProjectName(projectRoot: string): string {
   const readmePath = path.join(projectRoot, 'README.md');
   if (fs.existsSync(readmePath)) {
-    const heading = fs.readFileSync(readmePath, 'utf8').match(/^# (.+)$/m)?.[1];
+    const source = fs.readFileSync(readmePath, 'utf8');
+    const heading = source.match(/^# (.+)$/m)?.[1];
+    const emphasizedName = source.match(/^\*\*(.+)\*\*$/m)?.[1];
+    if (heading && !genericProjectHeadings.has(heading.toLowerCase())) return heading;
+    if (emphasizedName) return emphasizedName;
     if (heading) return heading;
   }
 
@@ -374,13 +378,16 @@ const documentGroupOrder = [
   'Repository docs',
 ];
 
+const genericProjectHeadings = new Set(['introduction', 'overview']);
+
 function documentGroup(file: string): string {
+  const normalized = file.toLowerCase();
   if (file === 'README.md') return 'Overview';
   if (file === 'TASKS.md' || sessionFileCandidates.includes(file)) return 'Planning';
-  if (file.startsWith('docs/ai/')) return 'Feature docs';
-  if (file.startsWith('docs/')) return 'Product docs';
-  if (file.startsWith('tasks/')) return 'Task history';
-  if (file.startsWith('.github/')) return 'Repository docs';
+  if (normalized.startsWith('docs/ai/')) return 'Feature docs';
+  if (normalized.startsWith('docs/')) return 'Product docs';
+  if (normalized.startsWith('tasks/')) return 'Task history';
+  if (normalized.startsWith('.github/')) return 'Repository docs';
   if (file.includes('/')) return 'Module docs';
   return 'Repository docs';
 }
