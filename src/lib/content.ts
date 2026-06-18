@@ -49,6 +49,7 @@ export interface DocumentEntry {
   group: string;
   path: string;
   source: string;
+  type: 'html' | 'markdown';
 }
 
 export interface ProjectEntry {
@@ -201,7 +202,7 @@ const taskIdPattern = /^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-\d+[a-z]?$/;
 
 export function parseTaskArchives(project: ProjectEntry): ArchivedTask[] {
   const archiveFiles = ['docs', 'tasks']
-    .flatMap((directory) => listMarkdown(project, directory))
+    .flatMap((directory) => listDocuments(project, directory))
     .filter((file) => /^TASKS.*archive.*\.md$/i.test(path.basename(file)))
     .sort();
   const tasks = new Map<string, ArchivedTask>();
@@ -292,7 +293,7 @@ export function groupArchivedTasks(tasks: ArchivedTask[]): ArchiveGroup[] {
 }
 
 export function getDocuments(project: ProjectEntry): DocumentEntry[] {
-  const entries = listMarkdown(project, '.')
+  const entries = listDocuments(project, '.')
     .map((file) => ({ file, group: documentGroup(file) }))
     .sort((left, right) => {
       const groupOrder = documentGroupOrder.indexOf(left.group) - documentGroupOrder.indexOf(right.group);
@@ -301,12 +302,14 @@ export function getDocuments(project: ProjectEntry): DocumentEntry[] {
 
   return entries.map(({ file, group }) => {
     const source = readRepoFile(project, file);
+    const type = file.toLowerCase().endsWith('.html') ? 'html' : 'markdown';
     return {
       slug: toDocumentSlug(file),
-      title: source.match(/^# (.+)$/m)?.[1] ?? path.basename(file, '.md'),
+      title: documentTitle(file, source, type),
       group,
       path: file,
       source,
+      type,
     };
   });
 }
@@ -316,10 +319,12 @@ export function renderMarkdown(source: string, options: { breaks?: boolean } = {
 }
 
 export function toDocumentSlug(filePath: string): string {
-  return filePath.replace(/\.md$/, '').replaceAll('/', '--').toLowerCase();
+  const normalized = filePath.toLowerCase();
+  const withoutExtension = normalized.endsWith('.md') ? normalized.slice(0, -3) : normalized;
+  return withoutExtension.replaceAll('/', '--');
 }
 
-function listMarkdown(project: ProjectEntry, directory: string): string[] {
+function listDocuments(project: ProjectEntry, directory: string): string[] {
   const directoryPath = path.join(project.root, directory);
   if (!fs.existsSync(directoryPath)) return [];
 
@@ -328,7 +333,7 @@ function listMarkdown(project: ProjectEntry, directory: string): string[] {
     for (const entry of fs.readdirSync(currentPath, { withFileTypes: true })) {
       if (entry.isDirectory() && !ignoredDocumentDirectories.has(entry.name)) {
         visit(path.join(currentPath, entry.name));
-      } else if (entry.isFile() && entry.name.toLowerCase().endsWith('.md')) {
+      } else if (entry.isFile() && ['.html', '.md'].includes(path.extname(entry.name).toLowerCase())) {
         files.push(path.relative(project.root, path.join(currentPath, entry.name)));
       }
     }
@@ -338,15 +343,30 @@ function listMarkdown(project: ProjectEntry, directory: string): string[] {
   return files.sort();
 }
 
+function documentTitle(file: string, source: string, type: DocumentEntry['type']): string {
+  if (type === 'markdown') return source.match(/^# (.+)$/m)?.[1] ?? path.basename(file, '.md');
+
+  const title = source.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]
+    ?? source.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1];
+  return title?.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim() || path.basename(file, '.html');
+}
+
 function readProjectName(projectRoot: string): string {
   const readmePath = path.join(projectRoot, 'README.md');
   if (fs.existsSync(readmePath)) {
     const source = fs.readFileSync(readmePath, 'utf8');
-    const heading = source.match(/^# (.+)$/m)?.[1];
-    const emphasizedName = source.match(/^\*\*(.+)\*\*$/m)?.[1];
-    if (heading && !genericProjectHeadings.has(heading.toLowerCase())) return heading;
-    if (emphasizedName) return emphasizedName;
-    if (heading) return heading;
+    const headings = [...source.matchAll(/^(#{1,6})\s+(.+)$/gm)];
+    const firstHeading = headings[0];
+
+    if (firstHeading?.[1] === '#') {
+      const heading = firstHeading[2].trim();
+      if (!genericProjectHeadings.has(heading.toLowerCase())) return heading;
+
+      const nextHeadingIndex = headings[1]?.index ?? source.length;
+      const introduction = source.slice((firstHeading.index ?? 0) + firstHeading[0].length, nextHeadingIndex);
+      const emphasizedName = introduction.match(/^\*\*(.+)\*\*$/m)?.[1]?.trim();
+      if (emphasizedName) return emphasizedName;
+    }
   }
 
   return path.basename(projectRoot);

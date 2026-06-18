@@ -15,7 +15,7 @@ const projectQuery = `project=${encodeURIComponent(project.key)}`;
   <header class="page-heading">
     <p class="eyebrow">Project files / Repository library</p>
     <h1>Project files</h1>
-    <p class="muted">All Markdown documentation discovered in the selected repository.</p>
+    <p class="muted">All Markdown and HTML documentation discovered in the selected repository.</p>
   </header>
   <div class="document-groups">
     {groups.map((group) => (
@@ -25,7 +25,7 @@ const projectQuery = `project=${encodeURIComponent(project.key)}`;
           {documents.filter((document) => document.group === group).map((document) => (
             <a href={`/document?${projectQuery}&doc=${encodeURIComponent(document.slug)}`}>
               <span>{document.title}</span>
-              <small>{document.path}</small>
+              <small>{document.path} · {document.type}</small>
             </a>
           ))}
         </div>
