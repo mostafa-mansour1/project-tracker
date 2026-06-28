@@ -109,7 +109,7 @@ export function parseTaskBoard(project: ProjectEntry): Phase[] {
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
     const phaseMatch = line.match(/^### (.+)$/);
-    const taskMatch = line.match(/^#### ([A-Z]+-\d+) — \[([ x~-])\] (.+)$/);
+    const taskMatch = line.match(/^#### ([A-Z]+-\d+[a-z]?) — \[([ x~-])\] (.+)$/);
 
     if (phaseMatch) {
       phase = { name: phaseMatch[1], goal: '', tasks: [] };
