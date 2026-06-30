@@ -60,6 +60,8 @@ cat > "$PLIST" << PLIST
     <true/>
     <key>KeepAlive</key>
     <true/>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
     <key>StandardOutPath</key>
     <string>$HOME/Library/Logs/project-tracker.log</string>
     <key>StandardErrorPath</key>
