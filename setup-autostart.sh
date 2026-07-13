@@ -8,6 +8,7 @@ set -e
 PLIST="$HOME/Library/LaunchAgents/com.mostafa.project-tracker.plist"
 PORT_DAEMON="/Library/LaunchDaemons/com.mostafa.tasks-portforward.plist"
 PF_ANCHOR="/etc/pf.anchors/tasks"
+PORT_LOG="$HOME/Library/Logs/project-tracker-portforward.log"
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
 echo "🔧 Setting up project-tracker..."
@@ -93,20 +94,25 @@ sudo tee "$PORT_DAEMON" > /dev/null << DAEMON
     <string>com.mostafa.tasks-portforward</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/sbin/pfctl</string>
-        <string>-ef</string>
-        <string>$PF_ANCHOR</string>
+        <string>/bin/sh</string>
+        <string>-c</string>
+        <string>/sbin/pfctl -f $PF_ANCHOR &amp;&amp; (/sbin/pfctl -e 2&gt;/dev/null || true)</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
+    <key>StandardOutPath</key>
+    <string>$PORT_LOG</string>
+    <key>StandardErrorPath</key>
+    <string>$PORT_LOG</string>
 </dict>
 </plist>
 DAEMON
 
 sudo launchctl unload "$PORT_DAEMON" 2>/dev/null || true
-sudo pfctl -ef "$PF_ANCHOR" 2>/dev/null || true
+sudo pfctl -f "$PF_ANCHOR"
+sudo pfctl -e 2>/dev/null || true
 sudo launchctl load "$PORT_DAEMON"
-echo "✅ Port forwarding active (80 → 4321, persists on reboot)"
+echo "✅ Port forwarding rule loaded (80 → 4321, persists on reboot)"
 
 # ── 6. Wait and confirm the server came up ───────────────────────────────────
 echo ""
@@ -129,6 +135,15 @@ else
     echo "---"
     tail -20 "$HOME/Library/Logs/project-tracker.log" 2>/dev/null || echo "(log is empty)"
     echo "---"
+    exit 1
+fi
+
+if curl -s --max-time 5 http://tasks > /dev/null 2>&1; then
+    echo "✅ http://tasks is reachable!"
+else
+    echo "❌ Server is up on http://localhost:4321, but http://tasks is not reachable."
+    echo "   Port forwarding failed or was flushed by another PF owner."
+    echo "   Port-forward log: $PORT_LOG"
     exit 1
 fi
 

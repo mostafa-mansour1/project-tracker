@@ -1,0 +1,151 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { getAdminSessions, getProject, getProjects, renderMarkdown } from '../lib/content';
+
+export const prerender = false;
+
+const projects = getProjects();
+const project = getProject(Astro.url.searchParams.get('project'));
+const adminSessions = getAdminSessions(project);
+const entries = adminSessions ? [...adminSessions.entries].reverse() : [];
+const types = [...new Set(entries.map((entry) => entry.type))];
+const projectQuery = `project=${encodeURIComponent(project.key)}`;
+---
+
+<BaseLayout title="Admin Sessions" project={project} projects={projects}>
+  <section class="admin-head">
+    <span class="eyebrow">Project administration / Read-only</span>
+    <h1>Admin Sessions</h1>
+    <p class="muted">Review the selected project’s administrative record directly from its repository.</p>
+    <div class="admin-meta">
+      <span><strong>{entries.length}</strong> {entries.length === 1 ? 'entry' : 'entries'}</span>
+      <code>{adminSessions?.path ?? 'ADMIN_SESSIONS.md'}</code>
+    </div>
+  </section>
+
+  {adminSessions ? (
+    <>
+      <section class="admin-controls panel" aria-label="Admin session filters">
+        <label>
+          <span>Search ID or keyword/title</span>
+          <input id="admin-session-search" type="search" placeholder="ADM-008, decision, extraction…" />
+        </label>
+        <label>
+          <span>Type</span>
+          <select id="admin-session-type">
+            <option value="all">All types</option>
+            {types.map((type) => <option value={type.toLowerCase()}>{type}</option>)}
+          </select>
+        </label>
+        <p id="admin-session-count" aria-live="polite">{entries.length} {entries.length === 1 ? 'entry' : 'entries'} shown · recent first</p>
+      </section>
+
+      {adminSessions.introduction && (
+        <article class="admin-introduction panel markdown" set:html={renderMarkdown(adminSessions.introduction, { breaks: true })}></article>
+      )}
+
+      <section class="admin-entry-list" aria-label="Admin session entries">
+        {entries.map((entry, index) => (
+          <details class="admin-entry panel" data-admin-entry data-type={entry.type.toLowerCase()} data-search={entry.searchText} open={index === 0}>
+            <summary>
+              <span class="entry-sequence">{String(index + 1).padStart(2, '0')}</span>
+              <span class="entry-heading">
+                <span class="entry-meta"><span class="entry-id">{entry.id}</span><span class="type-chip">{entry.type}</span></span>
+                <strong>{entry.title}</strong>
+              </span>
+            </summary>
+            <div class="entry-body markdown" set:html={renderMarkdown(entry.source, { breaks: true })}></div>
+          </details>
+        ))}
+      </section>
+      <p class="empty-filter" id="admin-session-empty" hidden>No admin sessions match those filters.</p>
+    </>
+  ) : (
+    <section class="empty-state panel">
+      <span class="empty-icon">—</span>
+      <h2>No Admin Sessions file</h2>
+      <p class="muted">This project does not contain <code>ADMIN_SESSIONS.md</code> beside its task board. Add that file at the project root or under <code>docs/ai/</code>, then refresh to review its entries here.</p>
+    </section>
+  )}
+
+  <p class="back-link"><a href={`/?${projectQuery}`}>← Back to roadmap</a></p>
+
+  {adminSessions && <script>
+    const search = document.querySelector<HTMLInputElement>('#admin-session-search');
+    const type = document.querySelector<HTMLSelectElement>('#admin-session-type');
+    const count = document.querySelector<HTMLElement>('#admin-session-count');
+    const empty = document.querySelector<HTMLElement>('#admin-session-empty');
+    const entries = [...document.querySelectorAll<HTMLElement>('[data-admin-entry]')];
+
+    function filterEntries() {
+      const query = search?.value.trim().toLowerCase() ?? '';
+      const selectedType = type?.value ?? 'all';
+      let visible = 0;
+
+      for (const entry of entries) {
+        const matchesText = entry.dataset.search?.includes(query) ?? false;
+        const matchesType = selectedType === 'all' || entry.dataset.type === selectedType;
+        entry.hidden = !(matchesText && matchesType);
+        if (!entry.hidden) visible += 1;
+      }
+
+      if (count) count.textContent = `${visible} ${visible === 1 ? 'entry' : 'entries'} shown`;
+      if (empty) empty.hidden = visible > 0;
+    }
+
+    search?.addEventListener('input', filterEntries);
+    type?.addEventListener('change', filterEntries);
+  </script>}
+</BaseLayout>
+
+<style>
+  .admin-head { border-bottom: 1px solid var(--line); margin-bottom: 24px; padding-bottom: 20px; }
+  .admin-head h1 { font-size: clamp(34px, 5vw, 58px); font-weight: 500; line-height: 1; margin: 8px 0 12px; }
+  .admin-head p { margin: 0; }
+  .admin-meta { align-items: center; display: flex; flex-wrap: wrap; gap: 18px; margin-top: 16px; }
+  .admin-meta span { color: var(--muted); font-size: 13px; }
+  .admin-meta strong { color: var(--ink); font-size: 18px; font-weight: 550; margin-right: 4px; }
+  .admin-meta code { color: var(--primary); font-size: 12px; }
+  .admin-controls { align-items: end; display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr) 220px auto; margin-bottom: 16px; padding: 14px; }
+  .admin-controls label span { color: var(--muted); display: block; font-size: 12px; font-weight: 550; margin: 0 0 6px 3px; }
+  .admin-controls input, .admin-controls select { background: var(--surface); border: 1px solid var(--line); border-radius: 0; color: var(--ink); min-height: 42px; padding: 0 12px; width: 100%; }
+  .admin-controls p { color: var(--muted); font-size: 13px; margin: 0 4px 12px; white-space: nowrap; }
+  .admin-introduction { margin-bottom: 16px; padding: 22px 24px; }
+  .admin-introduction.markdown { font-size: 13px; line-height: 1.6; }
+  .admin-entry-list { display: grid; gap: 12px; }
+  .admin-entry { overflow: hidden; }
+  .admin-entry[open] { background: #f7f2e7; }
+  .admin-entry summary { align-items: center; cursor: pointer; display: flex; gap: 14px; list-style: none; padding: 16px 18px; }
+  .admin-entry summary::-webkit-details-marker { display: none; }
+  .entry-sequence { color: #aaa99f; flex: 0 0 26px; font-family: ui-monospace, monospace; font-size: 10px; }
+  .entry-heading { display: grid; flex: 1; gap: 4px; min-width: 0; }
+  .entry-heading strong { font-size: 15px; font-weight: 550; }
+  .entry-meta { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; }
+  .entry-id { color: var(--primary); font-family: ui-monospace, monospace; font-size: 10px; font-weight: 650; letter-spacing: .07em; }
+  .type-chip { background: var(--primary-soft); border: 1px solid #e9b6a1; color: #8d3c20; font-family: ui-monospace, monospace; font-size: 9px; padding: 2px 6px; }
+  .entry-body { border-top: 1px dashed var(--line); padding: 4px 24px 22px 58px; }
+  .entry-body.markdown { font-size: 13px; line-height: 1.6; }
+  .markdown :global(h1) { font-size: 30px; margin: 8px 0 16px; }
+  .markdown :global(h2) { border-top: 1px solid var(--line); font-size: 22px; margin: 26px 0 14px; padding-top: 18px; }
+  .markdown :global(h2:first-child) { border-top: 0; margin-top: 12px; padding-top: 0; }
+  .markdown :global(h3) { font-size: 18px; margin: 22px 0 10px; }
+  .markdown :global(p), .markdown :global(li) { color: #3d465f; }
+  .markdown :global(p) { margin: 8px 0; }
+  .markdown :global(ul) { margin: 8px 0; padding-left: 20px; }
+  .markdown :global(a) { color: var(--primary); }
+  .markdown :global(code) { background: var(--primary-soft); color: #8d3c20; padding: 1px 5px; }
+  .empty-filter, .empty-state { text-align: center; }
+  .empty-filter { color: var(--muted); font-size: 13px; margin: 26px 0; }
+  .empty-state { padding: 42px 24px; }
+  .empty-state h2 { font-size: 24px; font-weight: 550; margin: 10px 0 8px; }
+  .empty-state p { line-height: 1.6; margin: 0 auto; max-width: 540px; }
+  .empty-icon { color: var(--primary); font-size: 24px; }
+  .back-link { margin: 24px 0 0; }
+  .back-link a { color: var(--primary); font-size: 13px; font-weight: 550; text-decoration: none; }
+  [hidden] { display: none !important; }
+  @media (max-width: 700px) {
+    .admin-controls { grid-template-columns: 1fr; }
+    .admin-controls p { margin: 0 3px; }
+    .entry-body { padding-left: 18px; }
+  }
+</style>

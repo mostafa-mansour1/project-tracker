@@ -60,10 +60,14 @@ const statusLabels: Record<TaskStatus, string> = {
         <option value="blocked">Blocked</option>
       </select>
     </label>
+    <label class="direction-toggle">
+      <input id="rtl-toggle" type="checkbox" />
+      <span>RTL tasks</span>
+    </label>
     <p id="visible-count" aria-live="polite">{totalTasks} tasks shown</p>
   </section>
 
-  <section class="phases">
+  <section class="phases task-board" data-direction-board dir="ltr">
     {phases.map((phase, phaseIndex) => {
       const phaseDone = phase.tasks.filter((task) => task.status === 'done').length;
       const phasePercent = Math.round((phaseDone / phase.tasks.length) * 100);
@@ -89,7 +93,7 @@ const statusLabels: Record<TaskStatus, string> = {
           <div class="task-grid">
             {phase.tasks.map((task) => {
               const criteriaDone = task.criteria.filter((criterion) => criterion.status === 'done').length;
-              const search = `${task.id} ${task.title} ${task.description} ${task.criteria.map((criterion) => criterion.text).join(' ')}`.toLowerCase();
+              const search = `${task.id} ${task.title} ${task.description} ${task.objective} ${task.expectedOutputs.join(' ')} ${task.validationRequirements.join(' ')} ${task.criteria.map((criterion) => criterion.text).join(' ')}`.toLowerCase();
               return (
                 <details class="task" data-task data-status={task.status} data-search={search} open={task.status === 'active'}>
                   <summary>
@@ -104,7 +108,25 @@ const statusLabels: Record<TaskStatus, string> = {
                     </span>
                   </summary>
                   <div class="task-body">
-                    <div class="criteria-meta"><span>Acceptance criteria</span><strong>{criteriaDone}/{task.criteria.length}</strong></div>
+                    {task.objective && (
+                      <section class="task-section">
+                        <h4>Objective</h4>
+                        <p>{task.objective}</p>
+                      </section>
+                    )}
+                    {task.expectedOutputs.length > 0 && (
+                      <section class="task-section">
+                        <h4>Expected outputs</h4>
+                        <ul>{task.expectedOutputs.map((item) => <li>{item}</li>)}</ul>
+                      </section>
+                    )}
+                    {task.validationRequirements.length > 0 && (
+                      <section class="task-section">
+                        <h4>Validation requirements</h4>
+                        <ul>{task.validationRequirements.map((item) => <li>{item}</li>)}</ul>
+                      </section>
+                    )}
+                    <div class="criteria-meta"><span>Completion criteria</span><strong>{criteriaDone}/{task.criteria.length}</strong></div>
                     {task.criteria.length > 0 ? (
                       <ul>
                         {task.criteria.map((criterion) => (
@@ -113,7 +135,7 @@ const statusLabels: Record<TaskStatus, string> = {
                           </li>
                         ))}
                       </ul>
-                    ) : <p class="muted">No acceptance criteria listed.</p>}
+                    ) : <p class="muted">No completion criteria listed.</p>}
                   </div>
                 </details>
               );
@@ -126,7 +148,7 @@ const statusLabels: Record<TaskStatus, string> = {
   </section>
 
   {archiveGroups.length > 0 && (
-    <section class="archive-board">
+    <section class="archive-board task-board" data-direction-board dir="ltr">
       <header class="archive-board-head">
         <div>
           <p class="eyebrow">Archive · {archived.length} completed tasks</p>
@@ -192,9 +214,12 @@ const statusLabels: Record<TaskStatus, string> = {
   <script>
     const search = document.querySelector<HTMLInputElement>('#task-search');
     const status = document.querySelector<HTMLSelectElement>('#status-filter');
+    const rtlToggle = document.querySelector<HTMLInputElement>('#rtl-toggle');
     const count = document.querySelector<HTMLElement>('#visible-count');
     const tasks = [...document.querySelectorAll<HTMLElement>('[data-task]')];
     const phases = [...document.querySelectorAll<HTMLElement>('[data-phase]')];
+    const directionBoards = [...document.querySelectorAll<HTMLElement>('[data-direction-board]')];
+    const directionStorageKey = 'project-tracker:task-board-rtl';
 
     function filterTasks() {
       const query = search?.value.trim().toLowerCase() ?? '';
@@ -215,8 +240,37 @@ const statusLabels: Record<TaskStatus, string> = {
       if (count) count.textContent = `${visible} ${visible === 1 ? 'task' : 'tasks'} shown`;
     }
 
+    function readSavedDirection() {
+      try {
+        return window.localStorage.getItem(directionStorageKey) === 'true';
+      } catch {
+        return false;
+      }
+    }
+
+    function saveDirection(isRtl: boolean) {
+      try {
+        window.localStorage.setItem(directionStorageKey, String(isRtl));
+      } catch {
+        // Direction still works for the current page when storage is unavailable.
+      }
+    }
+
+    function applyDirection(isRtl: boolean) {
+      for (const board of directionBoards) {
+        board.dir = isRtl ? 'rtl' : 'ltr';
+      }
+      if (rtlToggle) rtlToggle.checked = isRtl;
+    }
+
+    applyDirection(readSavedDirection());
     search?.addEventListener('input', filterTasks);
     status?.addEventListener('change', filterTasks);
+    rtlToggle?.addEventListener('change', () => {
+      const isRtl = rtlToggle.checked;
+      applyDirection(isRtl);
+      saveDirection(isRtl);
+    });
   </script>
 </BaseLayout>
 
@@ -229,13 +283,26 @@ const statusLabels: Record<TaskStatus, string> = {
   .stat-facts strong { color: var(--ink); font-size: 24px; font-weight: 400; }
   .stat-facts .active strong { color: var(--primary); }
   .stat-facts .blocked strong { color: var(--danger); }
-  .toolbar { align-items: end; border-bottom: 1px solid var(--line); display: grid; gap: 12px; grid-template-columns: minmax(170px, 1fr) minmax(220px, 1.2fr) 180px auto; margin-bottom: 16px; padding-bottom: 14px; }
+  .toolbar { align-items: end; border-bottom: 1px solid var(--line); display: grid; gap: 12px; grid-template-columns: minmax(170px, 1fr) minmax(220px, 1.2fr) 180px minmax(110px, auto) auto; margin-bottom: 16px; padding-bottom: 14px; }
   .toolbar-title { display: grid; gap: 4px; }
   .toolbar-title strong { font-size: 18px; font-weight: 550; }
   .toolbar label span { color: var(--muted); display: block; font-size: 12px; font-weight: 550; margin: 0 0 6px 3px; }
   .toolbar input, .toolbar select { background: var(--surface); border: 1px solid var(--line); border-radius: 0; color: var(--ink); min-height: 42px; padding: 0 12px; width: 100%; }
+  .toolbar .direction-toggle { align-items: center; background: var(--surface); border: 1px solid var(--line); display: flex; gap: 9px; min-height: 42px; padding: 0 11px; }
+  .toolbar .direction-toggle input { accent-color: var(--primary); flex: 0 0 auto; min-height: 0; width: auto; }
+  .toolbar .direction-toggle span { color: var(--ink); font-size: 12px; margin: 0; white-space: nowrap; }
   .toolbar p { color: var(--muted); font-size: 13px; font-weight: 500; margin: 0 4px 14px; white-space: nowrap; }
   .phases { display: grid; gap: 0; }
+  .task-board[dir='rtl'] { direction: rtl; text-align: right; }
+  .task-board[dir='rtl'] .archive-link,
+  .task-board[dir='rtl'] .archive-source,
+  .task-board[dir='rtl'] .phase-progress,
+  .task-board[dir='rtl'] .status-chip,
+  .task-board[dir='rtl'] .task-id,
+  .task-board[dir='rtl'] .task-sequence {
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
   .phase { display: grid; grid-template-columns: 34px minmax(0, 1fr); }
   .phase-marker { align-items: center; display: flex; flex-direction: column; z-index: 1; }
   .phase-marker span { background: var(--primary); color: white; display: grid; font-family: ui-monospace, monospace; font-size: 11px; font-weight: 600; height: 34px; place-items: center; width: 34px; }
@@ -323,4 +390,8 @@ const statusLabels: Record<TaskStatus, string> = {
     .task summary { align-items: flex-start; }
     .task-body { padding-left: 15px; }
   }
+.task-section { margin-bottom: 1.25rem; }
+.task-section h4 { margin: 0 0 0.45rem; font-size: 0.9rem; }
+.task-section p { margin: 0; color: var(--muted); }
+.task-section ul { margin-top: 0.45rem; }
 </style>

@@ -14,6 +14,9 @@ export interface Task {
   id: string;
   title: string;
   description: string;
+  objective: string;
+  expectedOutputs: string[];
+  validationRequirements: string[];
   status: TaskStatus;
   criteria: Criterion[];
   phase: string;
@@ -28,6 +31,21 @@ export interface Phase {
 export interface SessionLogEntry {
   title: string;
   body: string;
+}
+
+export interface AdminSessionEntry {
+  id: string;
+  type: string;
+  title: string;
+  source: string;
+  searchText: string;
+}
+
+export interface AdminSessionsDocument {
+  path: string;
+  source: string;
+  introduction: string;
+  entries: AdminSessionEntry[];
 }
 
 export interface ArchivedTask {
@@ -57,6 +75,7 @@ export interface ProjectEntry {
   name: string;
   scope: string;
   root: string;
+  tasksRoot: string;
 }
 
 const trackerRoot = fileURLToPath(new URL('../../', import.meta.url));
@@ -67,6 +86,16 @@ const statusMap: Record<string, TaskStatus> = {
   x: 'done',
   '-': 'blocked',
 };
+
+// A project keeps TASKS.md/SESSIONS.md at its true root (the common case) or,
+// as a fallback, inside docs/ai/ — used when those files must stay out of a
+// tracked docs/ folder. Root takes priority so existing true-root projects
+// are unaffected.
+function resolveTasksRoot(root: string): string | null {
+  if (fs.existsSync(path.join(root, 'TASKS.md'))) return '';
+  if (fs.existsSync(path.join(root, 'docs/ai/TASKS.md'))) return 'docs/ai';
+  return null;
+}
 
 export function getProjects(): ProjectEntry[] {
   return fs
@@ -83,7 +112,10 @@ export function getProjects(): ProjectEntry[] {
           root: path.join(scopeRoot, entry.name),
         }));
     })
-    .filter((entry) => fs.existsSync(path.join(entry.root, 'TASKS.md')))
+    .flatMap((entry) => {
+      const tasksRoot = resolveTasksRoot(entry.root);
+      return tasksRoot === null ? [] : [{ ...entry, tasksRoot }];
+    })
     .map((entry) => ({ ...entry, name: readProjectName(entry.root) }))
     .sort((left, right) => left.scope.localeCompare(right.scope) || left.name.localeCompare(right.name));
 }
@@ -100,7 +132,7 @@ export function readRepoFile(project: ProjectEntry, relativePath: string): strin
 }
 
 export function parseTaskBoard(project: ProjectEntry): Phase[] {
-  const source = readRepoFile(project, 'TASKS.md');
+  const source = readRepoFile(project, path.join(project.tasksRoot, 'TASKS.md'));
   const lines = source.split('\n');
   const phases: Phase[] = [];
   let phase: Phase | undefined;
@@ -109,7 +141,7 @@ export function parseTaskBoard(project: ProjectEntry): Phase[] {
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
     const phaseMatch = line.match(/^### (.+)$/);
-    const taskMatch = line.match(/^#### ([A-Z]+-\d+[a-z]?) — \[([ x~-])\] (.+)$/);
+    const taskMatch = line.match(/^#### ([A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-\d+[a-z]?) — \[([ x~-])\] (.+)$/);
 
     if (phaseMatch) {
       phase = { name: phaseMatch[1], goal: '', tasks: [] };
@@ -128,6 +160,9 @@ export function parseTaskBoard(project: ProjectEntry): Phase[] {
         id: taskMatch[1],
         title: stripTicks(taskMatch[3]),
         description: '',
+        objective: '',
+        expectedOutputs: [],
+        validationRequirements: [],
         status: statusMap[taskMatch[2]],
         criteria: [],
         phase: phase.name,
@@ -144,6 +179,23 @@ export function parseTaskBoard(project: ProjectEntry): Phase[] {
       continue;
     }
 
+    const objectiveMatch = line.match(/^\*\*Objective:\*\* (.+)$/);
+    if (objectiveMatch) {
+      task.objective = stripTicks(objectiveMatch[1]);
+      continue;
+    }
+
+    const currentSection = findCurrentTaskSection(lines, index);
+    const bulletMatch = line.match(/^- (?!\[)(.+)$/);
+    if (bulletMatch && currentSection === 'Expected outputs') {
+      task.expectedOutputs.push(stripTicks(bulletMatch[1]));
+      continue;
+    }
+    if (bulletMatch && currentSection === 'Validation requirements') {
+      task.validationRequirements.push(stripTicks(bulletMatch[1]));
+      continue;
+    }
+
     const criterionMatch = line.match(/^- \[([ x~-])\] (.+)$/);
     if (criterionMatch) {
       task.criteria.push({
@@ -156,21 +208,70 @@ export function parseTaskBoard(project: ProjectEntry): Phase[] {
   return phases.filter((entry) => entry.tasks.length > 0);
 }
 
+function findCurrentTaskSection(lines: string[], index: number): string | null {
+  for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+    const line = lines[cursor];
+    if (/^#### /.test(line)) return null;
+    const sectionMatch = line.match(/^\*\*(Expected outputs|Validation requirements|Completion criteria):\*\*$/);
+    if (sectionMatch) return sectionMatch[1];
+  }
+  return null;
+}
+
 const sessionFileCandidates = ['SESSIONS.md', 'docs/SESSIONS.md', 'tasks/SESSIONS.md'];
+const adminSessionsFileCandidates = ['ADMIN_SESSIONS.md', 'docs/ADMIN_SESSIONS.md', 'tasks/ADMIN_SESSIONS.md'];
 
 export function parseSessionLog(project: ProjectEntry): SessionLogEntry[] {
-  const sessionFile = sessionFileCandidates.find((relative) => fs.existsSync(path.join(project.root, relative)));
+  const candidates = [path.join(project.tasksRoot, 'SESSIONS.md'), ...sessionFileCandidates];
+  const sessionFile = candidates.find((relative) => fs.existsSync(path.join(project.root, relative)));
   if (sessionFile) {
     // Dedicated log file: every `### ` heading is an entry.
     return collectSessionEntries(readRepoFile(project, sessionFile), () => true);
   }
   // Fallback: the log lives in a `## Session Log` section inside TASKS.md.
   let inLog = false;
-  return collectSessionEntries(readRepoFile(project, 'TASKS.md'), (line) => {
+  return collectSessionEntries(readRepoFile(project, path.join(project.tasksRoot, 'TASKS.md')), (line) => {
     const sectionMatch = line.match(/^## (.+)$/);
     if (sectionMatch) inLog = sectionMatch[1].trim().toLowerCase() === 'session log';
     return inLog;
   });
+}
+
+export function getAdminSessions(project: ProjectEntry): AdminSessionsDocument | null {
+  const candidates = [path.join(project.tasksRoot, 'ADMIN_SESSIONS.md'), ...adminSessionsFileCandidates];
+  const adminSessionsFile = candidates.find((relative) => fs.existsSync(path.join(project.root, relative)));
+  if (!adminSessionsFile) return null;
+
+  const source = readRepoFile(project, adminSessionsFile);
+  const lines = source.split('\n');
+  const headings = lines
+    .map((line, index) => ({ line, index }))
+    .filter(({ line }) => /^##\s+ADM-\d+[a-z]?\s+—\s+.+$/i.test(line));
+  const firstEntryIndex = headings[0]?.index ?? lines.length;
+  const entries = headings.map(({ line, index }, entryIndex) => {
+    const headingMatch = line.match(/^##\s+(ADM-\d+[a-z]?)\s+—\s+(.+)$/i);
+    if (!headingMatch) throw new Error(`Invalid admin session heading: ${line}`);
+
+    const end = headings[entryIndex + 1]?.index ?? lines.length;
+    const entrySource = lines.slice(index, end).join('\n').trim();
+    const body = lines.slice(index + 1, end).join('\n');
+    const type = body.match(/^\*\*Type:\*\*\s*`?([A-Z][A-Z0-9-]*)`?/im)?.[1] ?? 'ADM-UNKNOWN';
+
+    return {
+      id: headingMatch[1].toUpperCase(),
+      type: type.toUpperCase(),
+      title: headingMatch[2].trim(),
+      source: entrySource,
+      searchText: `${headingMatch[1]} ${type} ${headingMatch[2]} ${body}`.toLowerCase(),
+    };
+  });
+
+  return {
+    path: adminSessionsFile,
+    source,
+    introduction: lines.slice(0, firstEntryIndex).join('\n').trim(),
+    entries,
+  };
 }
 
 function collectSessionEntries(source: string, isInScope: (line: string) => boolean): SessionLogEntry[] {
@@ -294,7 +395,7 @@ export function groupArchivedTasks(tasks: ArchivedTask[]): ArchiveGroup[] {
 
 export function getDocuments(project: ProjectEntry): DocumentEntry[] {
   const entries = listDocuments(project, '.')
-    .map((file) => ({ file, group: documentGroup(file) }))
+    .map((file) => ({ file, group: documentGroup(file, project.tasksRoot) }))
     .sort((left, right) => {
       const groupOrder = documentGroupOrder.indexOf(left.group) - documentGroupOrder.indexOf(right.group);
       return groupOrder || left.file.localeCompare(right.file);
@@ -400,10 +501,10 @@ const documentGroupOrder = [
 
 const genericProjectHeadings = new Set(['introduction', 'overview']);
 
-function documentGroup(file: string): string {
+function documentGroup(file: string, tasksRoot: string): string {
   const normalized = file.toLowerCase();
   if (file === 'README.md') return 'Overview';
-  if (file === 'TASKS.md' || sessionFileCandidates.includes(file)) return 'Planning';
+  if (file === path.join(tasksRoot, 'TASKS.md') || file === path.join(tasksRoot, 'SESSIONS.md') || sessionFileCandidates.includes(file)) return 'Planning';
   if (normalized.startsWith('docs/ai/')) return 'Feature docs';
   if (normalized.startsWith('docs/')) return 'Product docs';
   if (normalized.startsWith('tasks/')) return 'Task history';

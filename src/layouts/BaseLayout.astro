@@ -21,7 +21,8 @@ const {
 const projectQuery = `?project=${encodeURIComponent(project.key)}`;
 const pathname = Astro.url.pathname;
 const isHistory = pathname.startsWith('/history');
-const isDocuments = !isHistory && pathname !== '/';
+const isAdminSessions = pathname.startsWith('/admin-sessions');
+const isDocuments = !isHistory && !isAdminSessions && pathname !== '/';
 ---
 
 <!doctype html>
@@ -48,7 +49,7 @@ const isDocuments = !isHistory && pathname !== '/';
         </div>
 
         <nav aria-label="Main navigation">
-          <a class:list={[{ active: !isDocuments && !isHistory }]} href={`/${projectQuery}`}>
+          <a class:list={[{ active: !isDocuments && !isHistory && !isAdminSessions }]} href={`/${projectQuery}`}>
             <span>01</span> Roadmap
           </a>
           <a class:list={[{ active: isDocuments }]} href={`/documents${projectQuery}`}>
@@ -56,6 +57,9 @@ const isDocuments = !isHistory && pathname !== '/';
           </a>
           <a class:list={[{ active: isHistory }]} href={`/history${projectQuery}`}>
             <span>03</span> History
+          </a>
+          <a class:list={[{ active: isAdminSessions }]} href={`/admin-sessions${projectQuery}`}>
+            <span>04</span> Admin Sessions
           </a>
         </nav>
 
