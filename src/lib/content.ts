@@ -78,6 +78,8 @@ export interface ProjectEntry {
   tasksRoot: string;
 }
 
+type ProjectCandidate = Omit<ProjectEntry, 'name' | 'tasksRoot'>;
+
 const trackerRoot = fileURLToPath(new URL('../../', import.meta.url));
 const workspaceRoot = path.resolve(process.env.WORKSPACE_ROOT ?? path.dirname(trackerRoot));
 const statusMap: Record<string, TaskStatus> = {
@@ -112,12 +114,29 @@ export function getProjects(): ProjectEntry[] {
           root: path.join(scopeRoot, entry.name),
         }));
     })
+    .flatMap(expandWorkbenchRepos)
     .flatMap((entry) => {
       const tasksRoot = resolveTasksRoot(entry.root);
       return tasksRoot === null ? [] : [{ ...entry, tasksRoot }];
     })
     .map((entry) => ({ ...entry, name: readProjectName(entry.root) }))
     .sort((left, right) => left.scope.localeCompare(right.scope) || left.name.localeCompare(right.name));
+}
+
+function expandWorkbenchRepos(entry: ProjectCandidate): ProjectCandidate[] {
+  const reposRoot = path.join(entry.root, 'repos');
+  if (!fs.existsSync(reposRoot)) return [entry];
+
+  const repos = fs
+    .readdirSync(reposRoot, { withFileTypes: true })
+    .filter((repo) => repo.isDirectory())
+    .map((repo) => ({
+      key: `${entry.key}/${repo.name}`,
+      scope: entry.scope,
+      root: path.join(reposRoot, repo.name),
+    }));
+
+  return repos.length > 0 ? repos : [entry];
 }
 
 export function getProject(projectKey?: string | null): ProjectEntry {
