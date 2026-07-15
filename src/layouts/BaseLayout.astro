@@ -23,6 +23,11 @@ const pathname = Astro.url.pathname;
 const isHistory = pathname.startsWith('/history');
 const isAdminSessions = pathname.startsWith('/admin-sessions');
 const isDocuments = !isHistory && !isAdminSessions && pathname !== '/';
+const projectLabel = (entry: Props['projects'][number]) => {
+  const parts = entry.key.split('/');
+  if (parts.length >= 3) return `${parts[0]} / ${parts.at(-1)} — ${entry.name}`;
+  return `${entry.scope} / ${entry.name}`;
+};
 ---
 
 <!doctype html>
@@ -45,7 +50,7 @@ const isDocuments = !isHistory && !isAdminSessions && pathname !== '/';
         <div class="rail-project">
           <span class="rail-label">Current plan</span>
           <strong>{project.name}</strong>
-          <small>{project.scope} workspace</small>
+          <small>{project.key}</small>
         </div>
 
         <nav aria-label="Main navigation">
@@ -98,7 +103,7 @@ const isDocuments = !isHistory && !isAdminSessions && pathname !== '/';
             <form class="project-picker">
               <label for="project">Switch plan</label>
               <select id="project" name="project" onchange="this.form.submit()">
-                {projects.map((entry) => <option value={entry.key} selected={entry.key === project.key}>{entry.scope} / {entry.name}</option>)}
+                {projects.map((entry) => <option value={entry.key} selected={entry.key === project.key}>{projectLabel(entry)}</option>)}
               </select>
             </form>
           </div>
