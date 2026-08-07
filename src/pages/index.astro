@@ -1,6 +1,6 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
-import { getProject, getProjects, groupArchivedTasks, parseTaskArchives, parseTaskBoard, toDocumentSlug, type TaskStatus } from '../lib/content';
+import { getProject, getProjects, groupArchivedTasks, parseTaskArchives, parseTaskBoard, renderInlineMarkdown, toDocumentSlug, type TaskStatus } from '../lib/content';
 
 export const prerender = false;
 
@@ -103,7 +103,7 @@ const statusLabels: Record<TaskStatus, string> = {
                         <span class="task-id">{task.id}</span>
                         <span class={`status-chip ${task.status}`}>{statusLabels[task.status]}</span>
                       </span>
-                      <strong>{task.title}</strong>
+                      <strong set:html={renderInlineMarkdown(task.title)}></strong>
                       <small>{task.description || 'No description provided.'}</small>
                     </span>
                   </summary>
@@ -179,7 +179,7 @@ const statusLabels: Record<TaskStatus, string> = {
                           <span class="task-id">{task.id}</span>
                           <span class="status-chip done">Done</span>
                         </span>
-                        <strong>{task.title}</strong>
+                        <strong set:html={renderInlineMarkdown(task.title)}></strong>
                         <small>{task.description || `Archived · ${group.archive || 'history'}`}</small>
                       </span>
                     </summary>

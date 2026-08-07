@@ -159,8 +159,11 @@ export function parseTaskBoard(project: ProjectEntry): Phase[] {
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
-    const phaseMatch = line.match(/^### (.+)$/);
-    const taskMatch = line.match(/^#### ([A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-\d+[a-z]?) — \[([ x~-])\] (.+)$/);
+    // A phase is any `#`..`###` heading; tasks can live under a milestone-style
+    // `## ` section or a release-style `# ` section. Empty phases are dropped below.
+    const phaseMatch = line.match(/^#{1,3} (.+)$/);
+    // IDs are `ID-04`, `STRUCT-02a` or release-style `R1.1`.
+    const taskMatch = line.match(/^#### ([A-Z][A-Z0-9]*(?:[-.][A-Z0-9]+)*[a-z]?) — \[([ x~-])\] (.+)$/);
 
     if (phaseMatch) {
       phase = { name: phaseMatch[1], goal: '', tasks: [] };
@@ -169,8 +172,15 @@ export function parseTaskBoard(project: ProjectEntry): Phase[] {
       continue;
     }
 
-    if (phase && line.startsWith('> Goal:')) {
-      phase.goal = line.replace('> Goal:', '').trim();
+    const goalMatch = line.match(/^> (?:Goal|Demo): (.+)$/);
+    if (phase && goalMatch) {
+      phase.goal = goalMatch[1].trim();
+      continue;
+    }
+
+    // A goal/demo sentence may wrap over several quoted lines.
+    if (phase && !task && phase.goal && line.startsWith('> ')) {
+      phase.goal += ` ${line.slice(2).trim()}`;
       continue;
     }
 
@@ -323,7 +333,8 @@ const taskIdPattern = /^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-\d+[a-z]?$/;
 export function parseTaskArchives(project: ProjectEntry): ArchivedTask[] {
   const archiveFiles = ['docs', 'tasks']
     .flatMap((directory) => listDocuments(project, directory))
-    .filter((file) => /^TASKS.*archive.*\.md$/i.test(path.basename(file)))
+    // Archives are named `TASKS-archive-*.md`, or any `TASKS*.md` inside an archive folder.
+    .filter((file) => /^TASKS.*\.md$/i.test(path.basename(file)) && /archive/i.test(file))
     .sort();
   const tasks = new Map<string, ArchivedTask>();
 
@@ -436,6 +447,10 @@ export function getDocuments(project: ProjectEntry): DocumentEntry[] {
 
 export function renderMarkdown(source: string, options: { breaks?: boolean } = {}): string {
   return marked.parse(source, { async: false, breaks: options.breaks ?? false }) as string;
+}
+
+export function renderInlineMarkdown(source: string): string {
+  return marked.parseInline(source, { async: false }) as string;
 }
 
 export function toDocumentSlug(filePath: string): string {
